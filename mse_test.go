@@ -2,6 +2,8 @@ package mse_test
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"testing"
 
@@ -37,45 +39,40 @@ func NewPipe2() (*Pipe2, *Pipe2) {
 
 func TestPipe2(t *testing.T) {
 	a, b := NewPipe2()
-	defer a.Close()
-	defer b.Close()
 
-	data := []byte("asdf")
-	go a.Write(data)
-
-	buf := make([]byte, 10)
-	n, err := b.Read(buf)
+	err := testRws(a, b)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if n != 4 {
-		t.Fatalf("n must be 4, not %d", n)
-	}
-	if bytes.Compare(buf[:n], data) != 0 {
-		t.Fatal("invalid data received")
 	}
 }
 
 func TestStream(t *testing.T) {
 	conn1, conn2 := NewPipe2()
-	defer conn1.Close()
-	defer conn2.Close()
 
 	a := mse.NewStream(conn1)
 	b := mse.NewStream(conn2)
 
+	err := testRws(a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testRws(a, b io.ReadWriter) error {
 	data := []byte("asdf")
 	go a.Write(data)
 
 	buf := make([]byte, 10)
 	n, err := b.Read(buf)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	if n != 4 {
-		t.Fatalf("n must be 4, not %d", n)
+		return fmt.Errorf("n must be 4, not %d", n)
 	}
 	if bytes.Compare(buf[:n], data) != 0 {
-		t.Fatal("invalid data received")
+		return errors.New("invalid data received")
 	}
+
+	return nil
 }
