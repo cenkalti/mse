@@ -57,7 +57,7 @@ func TestStream(t *testing.T) {
 		if provided == mse.RC4 {
 			return mse.RC4, nil
 		}
-		return 0, errors.New("unexpected crypto provided")
+		return 0, fmt.Errorf("unexpected crypto provided: %d", provided)
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -102,7 +102,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	err = binary.Read(s.rw, binary.BigEndian, &s.yRemote)
+	err = binary.Read(bytes.NewReader(readBuf), binary.BigEndian, &s.yRemote)
 	if err != nil {
 		return
 	}
@@ -231,7 +231,7 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if err != nil {
 		return err
 	}
-	err = binary.Read(s.rw, binary.BigEndian, &s.yRemote)
+	err = binary.Read(bytes.NewReader(readBuf), binary.BigEndian, &s.yRemote)
 	if err != nil {
 		return err
 	}
