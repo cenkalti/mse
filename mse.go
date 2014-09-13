@@ -11,6 +11,8 @@
 //
 // To minimize the load on systems that employ this protocol fast cryptographic
 // methods have been chosen over maximum-security algorithms.
+//
+// See http://wiki.vuze.com/w/Message_Stream_Encryption for details.
 package mse
 
 import (
