@@ -72,7 +72,6 @@ func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
 func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoMethod, err error) {
-	// readBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
@@ -80,10 +79,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	padA, err := pad()
-	if err != nil {
-		return
-	}
+	padA := pad()
 	_, err = writeBuf.Write(padA)
 	if err != nil {
 		return
@@ -115,9 +111,9 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	// discard := make([]byte, 1024)
-	// cipherEnc.XORKeyStream(discard, discard)
-	// cipherDec.XORKeyStream(discard, discard)
+	discard := make([]byte, 1024)
+	cipherEnc.XORKeyStream(discard, discard)
+	cipherDec.XORKeyStream(discard, discard)
 	s.w = &cipher.StreamWriter{S: cipherEnc, W: s.raw}
 	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
@@ -128,10 +124,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	for i := 0; i < sha1.Size; i++ {
 		req3[i] ^= req2[i]
 	}
-	padC, err := pad()
-	if err != nil {
-		return
-	}
+	padC := pad()
 	_, err = writeBuf.Write(req1)
 	if err != nil {
 		return
@@ -229,14 +222,13 @@ func rc4Key(prefix string, s uint64, sKey uint64) []byte {
 	return h.Sum(nil)
 }
 
-func pad() ([]byte, error) {
+func pad() []byte {
 	b := make([]byte, rand.Intn(512))
-	_, err := crand.Read(b)
-	return b, err
+	crand.Read(b)
+	return b
 }
 
 func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod) (CryptoMethod, error)) error {
-	// readBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
@@ -259,9 +251,9 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if err != nil {
 		return err
 	}
-	// discard := make([]byte, 1024)
-	// cipherEnc.XORKeyStream(discard, discard)
-	// cipherDec.XORKeyStream(discard, discard)
+	discard := make([]byte, 1024)
+	cipherEnc.XORKeyStream(discard, discard)
+	cipherDec.XORKeyStream(discard, discard)
 	s.w = &cipher.StreamWriter{S: cipherEnc, W: s.raw}
 	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
@@ -270,7 +262,7 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if err != nil {
 		return err
 	}
-	padB, err := pad()
+	padB := pad()
 	_, err = writeBuf.Write(padB)
 	if err != nil {
 		return err
@@ -350,10 +342,7 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if err != nil {
 		return err
 	}
-	padD, err := pad()
-	if err != nil {
-		return err
-	}
+	padD := pad()
 	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(padD)))
 	if err != nil {
 		return err
