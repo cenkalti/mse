@@ -172,19 +172,16 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	}
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
-	vcRead, err := s.decrypt(8)
+	vcRead := make([]byte, 8)
+	_, err = io.ReadFull(s.r, vcRead)
 	if err != nil {
 		return
 	}
-	if bytes.Compare(vcRead, vc) != 0 {
+	if !bytes.Equal(vcRead, vc) {
 		err = errors.New("invalid VC")
 		return
 	}
-	cryptoSelect, err := s.decrypt(4)
-	if err != nil {
-		return
-	}
-	err = binary.Read(bytes.NewReader(cryptoSelect), binary.BigEndian, &selected)
+	err = binary.Read(s.r, binary.BigEndian, &selected)
 	if err != nil {
 		return
 	}
@@ -197,12 +194,8 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 		err = fmt.Errorf("selected crypto is not provided: %d", selected)
 		return
 	}
-	lenPadDBytes, err := s.decrypt(2)
-	if err != nil {
-		return
-	}
 	var lenPadD uint16
-	err = binary.Read(bytes.NewReader(lenPadDBytes), binary.BigEndian, &lenPadD)
+	err = binary.Read(s.r, binary.BigEndian, &lenPadD)
 	if err != nil {
 		return
 	}
@@ -219,15 +212,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
-func isPowerOfTwo(x uint32) bool {
-	return (x != 0) && ((x & (x - 1)) == 0)
-}
-
-func (s *Stream) decrypt(n int) ([]byte, error) {
-	buf := make([]byte, n)
-	_, err := io.ReadFull(s.r, buf)
-	return buf, err
-}
+func isPowerOfTwo(x uint32) bool { return (x != 0) && ((x & (x - 1)) == 0) }
 
 func hash(prefix string, key uint64) []byte {
 	h := sha1.New()
@@ -315,19 +300,16 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if !bytes.Equal(hashRead, hash3Calc) {
 		err = errors.New("invalid SKEY hash")
 	}
-	vcRead, err := s.decrypt(8)
+	vcRead := make([]byte, 8)
+	_, err = io.ReadFull(s.r, vcRead)
 	if err != nil {
 		return err
 	}
 	if !bytes.Equal(vcRead, vc) {
 		return fmt.Errorf("invalid VC: %s", hex.EncodeToString(vcRead))
 	}
-	cryptoProvideBytes, err := s.decrypt(4)
-	if err != nil {
-		return err
-	}
 	var cryptoProvide CryptoMethod
-	err = binary.Read(bytes.NewReader(cryptoProvideBytes), binary.BigEndian, &cryptoProvide)
+	err = binary.Read(s.r, binary.BigEndian, &cryptoProvide)
 	if err != nil {
 		return err
 	}
