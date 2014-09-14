@@ -67,7 +67,7 @@ func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
-func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod, sKey []byte) (selected CryptoMethod, err error) {
+func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (selected CryptoMethod, err error) {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	Xa, Ya, err := keyPair()
@@ -211,7 +211,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod, sKey []byte) (sel
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
-func (s *Stream) HandshakeIncoming(cryptoSelect func(provided CryptoMethod) (selected CryptoMethod), sKey []byte) error {
+func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided CryptoMethod) (selected CryptoMethod)) error {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	Xb, Yb, err := keyPair()
