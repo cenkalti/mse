@@ -108,11 +108,13 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
 	b := make([]byte, 96+512)
 	fmt.Println("--- out: reading PubkeyB")
-	_, err = io.ReadAtLeast(s.raw, b, 96)
+	n, err := io.ReadAtLeast(s.raw, b, 96)
 	if err != nil {
 		return
 	}
 	fmt.Println("--- out: done")
+	fmt.Printf("--- n: %d\n", n)
+	fmt.Printf("--- b: %q\n", string(b[:n]))
 	Yb := new(big.Int)
 	Yb.SetBytes(b[:96])
 	b = nil
@@ -184,18 +186,20 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	fmt.Println("--- out: done")
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
-	vcRead := make([]byte, 8)
-	fmt.Println("--- out: read sync")
-	_, err = io.ReadFull(s.r, vcRead)
-	if err != nil {
+	vcEnc := make([]byte, 8)
+	s.r.S.XORKeyStream(vcEnc, vc)
+	var readBuf bytes.Buffer
+	if _, err = io.CopyN(&readBuf, s.raw, 8); err != nil {
 		return
 	}
-	fmt.Println("--- out: done")
-	fmt.Println("--- 1")
-	if !bytes.Equal(vcRead, vc) {
-		fmt.Println("--- 2")
-		err = errors.New("invalid VC")
-		return
+	for {
+		b := readBuf.Bytes()
+		if bytes.Equal(b[len(b)-8:], vcEnc) {
+			break
+		}
+		if _, err = io.CopyN(&readBuf, s.raw, 1); err != nil {
+			break
+		}
 	}
 	fmt.Println("--- out: reading crypto_select")
 	err = binary.Read(s.r, binary.BigEndian, &selected)
