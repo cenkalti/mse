@@ -35,10 +35,9 @@ const (
 )
 
 var (
-	p    = new(big.Int)
-	g    = big.NewInt(2)
-	vc   = make([]byte, 8)
-	sKey = make([]byte, 20) // TODO take it as argument
+	p  = new(big.Int)
+	g  = big.NewInt(2)
+	vc = make([]byte, 8)
 )
 
 func init() {
@@ -68,7 +67,7 @@ func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
-func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoMethod, err error) {
+func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod, sKey []byte) (selected CryptoMethod, err error) {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	Xa, Ya, err := keyPair()
@@ -212,7 +211,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
-func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod) (CryptoMethod, error)) error {
+func (s *Stream) HandshakeIncoming(cryptoSelect func(provided CryptoMethod) (selected CryptoMethod, err error), sKey []byte) error {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	Xb, Yb, err := keyPair()

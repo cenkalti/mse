@@ -51,14 +51,15 @@ func TestStream(t *testing.T) {
 
 	a := mse.NewStream(conn1)
 	b := mse.NewStream(conn2)
+	sKey := []byte("1234")
 
-	go a.HandshakeOutgoing(mse.RC4)
+	go a.HandshakeOutgoing(mse.RC4, sKey)
 	err := b.HandshakeIncoming(func(provided mse.CryptoMethod) (mse.CryptoMethod, error) {
 		if provided != mse.RC4 {
 			t.Fatalf("unexpected crypto provided: %d", provided)
 		}
 		return mse.RC4, nil
-	})
+	}, sKey)
 	if err != nil {
 		t.Fatal(err)
 	}
