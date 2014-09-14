@@ -31,9 +31,21 @@ import (
 	"math/big"
 )
 
-const (
-	pStr = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A63A36210000000000090563"
-)
+const enableDebug = false
+
+func debugln(args ...interface{}) {
+	if enableDebug {
+		fmt.Println(args...)
+	}
+}
+
+func debugf(format string, args ...interface{}) {
+	if enableDebug {
+		fmt.Printf(format, args...)
+	}
+}
+
+const pStr = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A63A36210000000000090563"
 
 var (
 	p  = new(big.Int)
@@ -98,23 +110,22 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	if err != nil {
 		return
 	}
-	fmt.Println("--- out: writing Step 1")
+	debugln("--- out: writing Step 1")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
 		return
 	}
-	fmt.Println("--- out: done")
+	debugln("--- out: done")
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
 	b := make([]byte, 96+512)
-	fmt.Println("--- out: reading PubkeyB")
+	debugln("--- out: reading PubkeyB")
 	n, err := io.ReadAtLeast(s.raw, b, 96)
 	if err != nil {
 		return
 	}
-	fmt.Println("--- out: done")
-	fmt.Printf("--- n: %d\n", n)
-	fmt.Printf("--- b: %q\n", string(b[:n]))
+	debugln("--- out: done")
+	debugf("--- n: %d\n", n)
 	Yb := new(big.Int)
 	Yb.SetBytes(b[:96])
 	S := Yb.Exp(Yb, Xa, p)
@@ -177,12 +188,12 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	}
 	encBytes := writeBuf.Bytes()[40:]
 	cipherEnc.XORKeyStream(encBytes, encBytes)
-	fmt.Println("--- out: writing Step 3")
+	debugln("--- out: writing Step 3")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
 		return
 	}
-	fmt.Println("--- out: done")
+	debugln("--- out: done")
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 	vcEnc := make([]byte, 8)
@@ -191,13 +202,13 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	if err != nil {
 		return
 	}
-	fmt.Println("--- out: reading crypto_select")
+	debugln("--- out: reading crypto_select")
 	err = binary.Read(s.r, binary.BigEndian, &selected)
 	if err != nil {
 		return
 	}
-	fmt.Println("--- out: done")
-	fmt.Printf("--- selected: %#v\n", selected)
+	debugln("--- out: done")
+	debugf("--- selected: %#v\n", selected)
 	if selected == 0 {
 		err = errors.New("none of the provided methods are accepted")
 		return
@@ -221,7 +232,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	}
 	s.updateCipher(selected)
 
-	fmt.Println("--- out: end handshake")
+	debugln("--- out: end handshake")
 	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
@@ -236,12 +247,12 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
 	b := make([]byte, 96+512)
-	fmt.Println("--- in: read PubkeyA")
+	debugln("--- in: read PubkeyA")
 	_, err = io.ReadAtLeast(s.raw, b, 96)
 	if err != nil {
 		return
 	}
-	fmt.Println("--- in: done")
+	debugln("--- in: done")
 	Ya := new(big.Int)
 	Ya.SetBytes(b[:96])
 	S := Ya.Exp(Ya, Xb, p)
@@ -272,12 +283,12 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	if err != nil {
 		return
 	}
-	fmt.Println("--- in: writing Step 2")
+	debugln("--- in: writing Step 2")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
 		return
 	}
-	fmt.Println("--- in: done")
+	debugln("--- in: done")
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
 	hash1Calc := hashKey("req1", S)
@@ -300,12 +311,12 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 		return
 	}
 	vcRead := make([]byte, 8)
-	fmt.Println("--- in: read vc")
+	debugln("--- in: read vc")
 	_, err = io.ReadFull(s.r, vcRead)
 	if err != nil {
 		return
 	}
-	fmt.Println("--- in: done")
+	debugln("--- in: done")
 	if !bytes.Equal(vcRead, vc) {
 		err = fmt.Errorf("invalid VC: %s", hex.EncodeToString(vcRead))
 		return
@@ -352,7 +363,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	}
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
-	fmt.Println("--- in: begin step 4")
+	debugln("--- in: begin step 4")
 	_, err = writeBuf.Write(vc)
 	if err != nil {
 		return
@@ -374,7 +385,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 		return
 	}
 	enc2Start := writeBuf.Len()
-	fmt.Printf("--- enc2Start: %#v\n", enc2Start)
+	debugf("--- enc2Start: %#v\n", enc2Start)
 	_, err = writeBuf.Write(initialPayloadOutgoing)
 	if err != nil {
 		return
@@ -384,14 +395,14 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	s.w.S.XORKeyStream(enc1Bytes, enc1Bytes)
 	s.updateCipher(selected)
 	s.w.S.XORKeyStream(enc2Bytes, enc2Bytes)
-	fmt.Println("--- in: writing step 4")
+	debugln("--- in: writing step 4")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
 		return
 	}
-	fmt.Println("--- in: done")
+	debugln("--- in: done")
 
-	fmt.Println("--- in: end handshake")
+	debugln("--- in: end handshake")
 	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
