@@ -70,7 +70,7 @@ func TestStream(t *testing.T) {
 }
 
 func testRws(a, b io.ReadWriter) error {
-	data := []byte("asdf")
+	data := []byte("ABCD")
 	go a.Write(data)
 
 	buf := make([]byte, 10)

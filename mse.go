@@ -115,6 +115,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 		return
 	}
 	S := (yRemote ^ s.x) % p
+	fmt.Printf("--- S out: %#v\n", S)
 	cipherEnc, err := rc4.NewCipher(rc4Key("keyA", S, sKey))
 	if err != nil {
 		return
@@ -123,11 +124,11 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	discard := make([]byte, 1024)
-	cipherEnc.XORKeyStream(discard, discard)
-	cipherDec.XORKeyStream(discard, discard)
-	s.w = cipher.StreamWriter{S: cipherEnc, W: s.raw}
-	s.r = cipher.StreamReader{S: cipherDec, R: s.raw}
+	// discard := make([]byte, 1024)
+	// cipherEnc.XORKeyStream(discard, discard)
+	// cipherDec.XORKeyStream(discard, discard)
+	s.w = &cipher.StreamWriter{S: cipherEnc, W: s.raw}
+	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
 	_, err = writeBuf.Write(hash("req1", S))
@@ -248,6 +249,7 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 		return err
 	}
 	S := (yRemote ^ s.x) % p
+	fmt.Printf("--- S in:  %#v\n", S)
 	cipherEnc, err := rc4.NewCipher(rc4Key("keyB", S, sKey))
 	if err != nil {
 		return err
@@ -256,11 +258,11 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if err != nil {
 		return err
 	}
-	discard := make([]byte, 1024)
-	cipherEnc.XORKeyStream(discard, discard)
-	cipherDec.XORKeyStream(discard, discard)
-	s.w = cipher.StreamWriter{S: cipherEnc, W: s.raw}
-	s.r = cipher.StreamReader{S: cipherDec, R: s.raw}
+	// discard := make([]byte, 1024)
+	// cipherEnc.XORKeyStream(discard, discard)
+	// cipherDec.XORKeyStream(discard, discard)
+	s.w = &cipher.StreamWriter{S: cipherEnc, W: s.raw}
+	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
 	writeBuf := bufio.NewWriter(s.raw)
