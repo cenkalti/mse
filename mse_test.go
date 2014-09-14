@@ -58,7 +58,11 @@ func TestStream(t *testing.T) {
 	payloadBRead := make([]byte, 8)
 
 	go func() {
-		_, _, err := a.HandshakeOutgoing(sKey, mse.RC4, payloadA, payloadBRead)
+		_, err := a.HandshakeOutgoing(sKey, mse.RC4, payloadA)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = io.ReadFull(a, payloadBRead)
 		if err != nil {
 			t.Fatal(err)
 		}

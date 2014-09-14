@@ -68,7 +68,7 @@ func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
-func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, initialPayloadOutgoing, initialPayloadIncoming []byte) (selected CryptoMethod, n int, err error) {
+func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, initialPayloadOutgoing []byte) (selected CryptoMethod, err error) {
 	if cryptoProvide == 0 {
 		err = errors.New("no crypto methods are provided")
 		return
@@ -226,8 +226,8 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 		return
 	}
 	s.updateCipher(selected)
-	n, err = s.r.Read(initialPayloadIncoming)
 
+	fmt.Println("--- out: end handshake")
 	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
@@ -402,6 +402,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	}
 	fmt.Println("--- in: done")
 
+	fmt.Println("--- in: end handshake")
 	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
