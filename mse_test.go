@@ -52,16 +52,31 @@ func TestStream(t *testing.T) {
 	a := mse.NewStream(conn1)
 	b := mse.NewStream(conn2)
 	sKey := []byte("1234")
+	payloadA := []byte("payloadA")
+	payloadB := []byte("payloadB")
+	payloadARead := make([]byte, 8)
+	payloadBRead := make([]byte, 8)
 
-	go a.HandshakeOutgoing(sKey, mse.RC4)
-	err := b.HandshakeIncoming(sKey, func(provided mse.CryptoMethod) (selected mse.CryptoMethod) {
+	go func() {
+		_, _, err := a.HandshakeOutgoing(sKey, mse.RC4, payloadA, payloadBRead)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	_, err := b.HandshakeIncoming(sKey, func(provided mse.CryptoMethod) (selected mse.CryptoMethod) {
 		if provided == mse.RC4 {
 			selected = mse.RC4
 		}
 		return
-	})
+	}, payloadARead, payloadB)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !bytes.Equal(payloadA, payloadARead) {
+		t.Fatal("invalid payload A")
+	}
+	if !bytes.Equal(payloadB, payloadBRead) {
+		t.Fatal("invalid payload B")
 	}
 
 	err = testRws(a, b)

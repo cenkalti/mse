@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/big"
 )
 
@@ -58,8 +59,8 @@ const (
 
 type Stream struct {
 	raw io.ReadWriter
-	r   io.Reader
-	w   io.Writer
+	r   *cipher.StreamReader
+	w   *cipher.StreamWriter
 }
 
 func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
@@ -67,9 +68,13 @@ func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
-func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (selected CryptoMethod, err error) {
+func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, initialPayloadOutgoing, initialPayloadIncoming []byte) (selected CryptoMethod, n int, err error) {
 	if cryptoProvide == 0 {
 		err = errors.New("no crypto methods are provided")
+		return
+	}
+	if len(initialPayloadOutgoing) > math.MaxUint16 {
+		err = errors.New("initial payload is too big")
 		return
 	}
 
@@ -161,7 +166,11 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (sel
 	if err != nil {
 		return
 	}
-	err = binary.Write(writeBuf, binary.BigEndian, uint16(0)) // len(IA) TODO take it as argument
+	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(initialPayloadOutgoing)))
+	if err != nil {
+		return
+	}
+	_, err = writeBuf.Write(initialPayloadOutgoing)
 	if err != nil {
 		return
 	}
@@ -182,14 +191,18 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (sel
 		return
 	}
 	fmt.Println("--- out: done")
+	fmt.Println("--- 1")
 	if !bytes.Equal(vcRead, vc) {
+		fmt.Println("--- 2")
 		err = errors.New("invalid VC")
 		return
 	}
+	fmt.Println("--- out: reading crypto_select")
 	err = binary.Read(s.r, binary.BigEndian, &selected)
 	if err != nil {
 		return
 	}
+	fmt.Println("--- out: done")
 	fmt.Printf("--- selected: %#v\n", selected)
 	if selected == 0 {
 		err = errors.New("none of the provided methods are accepted")
@@ -213,17 +226,18 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (sel
 		return
 	}
 	s.updateCipher(selected)
+	n, err = s.r.Read(initialPayloadIncoming)
 
-	return selected, nil
+	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
-func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided CryptoMethod) (selected CryptoMethod)) error {
+func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided CryptoMethod) (selected CryptoMethod), initialPayloadIncoming, initialPayloadOutgoing []byte) (n int, err error) {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	Xb, Yb, err := keyPair()
 	if err != nil {
-		return err
+		return
 	}
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
@@ -231,7 +245,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	fmt.Println("--- in: read PubkeyA")
 	_, err = io.ReadAtLeast(s.raw, b, 96)
 	if err != nil {
-		return err
+		return
 	}
 	fmt.Println("--- in: done")
 	Ya := new(big.Int)
@@ -240,11 +254,11 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	S := Ya.Exp(Ya, Xb, p)
 	cipherEnc, err := rc4.NewCipher(rc4Key("keyB", S, sKey))
 	if err != nil {
-		return err
+		return
 	}
 	cipherDec, err := rc4.NewCipher(rc4Key("keyA", S, sKey))
 	if err != nil {
-		return err
+		return
 	}
 	discard := make([]byte, 1024)
 	cipherEnc.XORKeyStream(discard, discard)
@@ -255,20 +269,20 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
 	_, err = writeBuf.Write(keyBytesWithPad(Yb))
 	if err != nil {
-		return err
+		return
 	}
 	padB, err := pad()
 	if err != nil {
-		return err
+		return
 	}
 	_, err = writeBuf.Write(padB)
 	if err != nil {
-		return err
+		return
 	}
 	fmt.Println("--- in: writing Step 2")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
-		return err
+		return
 	}
 	fmt.Println("--- in: done")
 
@@ -282,94 +296,113 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	hashRead := make([]byte, 20)
 	_, err = io.ReadFull(s.raw, hashRead)
 	if err != nil {
-		return err
+		return
 	}
 	if !bytes.Equal(hashRead, hash1Calc) {
 		err = errors.New("invalid S hash")
-		return err
+		return
 	}
 	_, err = io.ReadFull(s.raw, hashRead)
 	if err != nil {
-		return err
+		return
 	}
 	if !bytes.Equal(hashRead, hash3Calc) {
 		err = errors.New("invalid SKEY hash")
-		return err
+		return
 	}
 	vcRead := make([]byte, 8)
 	fmt.Println("--- in: read vc")
 	_, err = io.ReadFull(s.r, vcRead)
 	if err != nil {
-		return err
+		return
 	}
 	fmt.Println("--- in: done")
 	if !bytes.Equal(vcRead, vc) {
-		return fmt.Errorf("invalid VC: %s", hex.EncodeToString(vcRead))
+		err = fmt.Errorf("invalid VC: %s", hex.EncodeToString(vcRead))
+		return
 	}
 	var cryptoProvide CryptoMethod
 	err = binary.Read(s.r, binary.BigEndian, &cryptoProvide)
 	if err != nil {
-		return err
+		return
 	}
 	if cryptoProvide == 0 {
-		return errors.New("no crypto methods are provided")
+		err = errors.New("no crypto methods are provided")
+		return
 	}
 	selected := cryptoSelect(cryptoProvide)
 	if selected == 0 {
-		return errors.New("none of the provided methods are accepted")
+		err = errors.New("none of the provided methods are accepted")
+		return
 	}
 	if !isPowerOfTwo(uint32(selected)) {
-		return fmt.Errorf("invalid crypto selected: %d", selected)
+		err = fmt.Errorf("invalid crypto selected: %d", selected)
+		return
 	}
 	if (selected & cryptoProvide) == 0 {
-		return fmt.Errorf("selected crypto is not provided: %d", selected)
+		err = fmt.Errorf("selected crypto is not provided: %d", selected)
+		return
 	}
 	var lenPadC uint16
 	err = binary.Read(s.r, binary.BigEndian, &lenPadC)
 	if err != nil {
-		return err
+		return
 	}
 	_, err = io.CopyN(ioutil.Discard, s.r, int64(lenPadC))
 	if err != nil {
-		return err
+		return
 	}
 	var lenIA uint16
 	err = binary.Read(s.r, binary.BigEndian, &lenIA)
 	if err != nil {
-		return err
+		return
+	}
+	n, err = io.ReadFull(s.r, initialPayloadIncoming[:int(lenIA)])
+	if err != nil {
+		return
 	}
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 	fmt.Println("--- in: begin step 4")
 	_, err = writeBuf.Write(vc)
 	if err != nil {
-		return err
+		return
 	}
 	err = binary.Write(writeBuf, binary.BigEndian, selected)
 	if err != nil {
-		return err
+		return
 	}
 	padD, err := pad()
 	if err != nil {
-		return err
+		return
 	}
 	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(padD)))
 	if err != nil {
-		return err
+		return
 	}
 	_, err = writeBuf.Write(padD)
 	if err != nil {
-		return err
+		return
 	}
-	fmt.Println("--- in: writing step 4")
-	_, err = writeBuf.WriteTo(s.w)
+	enc2Start := writeBuf.Len()
+	fmt.Printf("--- enc2Start: %#v\n", enc2Start)
+	_, err = writeBuf.Write(initialPayloadOutgoing)
 	if err != nil {
-		return err
+		return
+	}
+	enc1Bytes := writeBuf.Bytes()[:enc2Start]
+	enc2Bytes := writeBuf.Bytes()[enc2Start:]
+	s.w.S.XORKeyStream(enc1Bytes, enc1Bytes)
+	s.updateCipher(selected)
+	s.w.S.XORKeyStream(enc2Bytes, enc2Bytes)
+	fmt.Println("--- in: writing step 4")
+	_, err = writeBuf.WriteTo(s.raw)
+	if err != nil {
+		return
 	}
 	fmt.Println("--- in: done")
-	s.updateCipher(selected)
 
-	return nil
+	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
@@ -377,8 +410,8 @@ func (s *Stream) updateCipher(selected CryptoMethod) {
 	switch selected {
 	case RC4:
 	case PlainText:
-		s.r = s.raw
-		s.w = s.raw
+		s.r = &cipher.StreamReader{S: plainTextCipher{}, R: s.raw}
+		s.w = &cipher.StreamWriter{S: plainTextCipher{}, W: s.raw}
 	}
 }
 
@@ -452,3 +485,7 @@ func pad() ([]byte, error) {
 	}
 	return b, nil
 }
+
+type plainTextCipher struct{}
+
+func (plainTextCipher) XORKeyStream(dst, src []byte) { copy(dst, src) }
