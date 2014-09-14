@@ -54,11 +54,11 @@ func TestStream(t *testing.T) {
 	sKey := []byte("1234")
 
 	go a.HandshakeOutgoing(mse.RC4, sKey)
-	err := b.HandshakeIncoming(func(provided mse.CryptoMethod) (mse.CryptoMethod, error) {
-		if provided != mse.RC4 {
-			t.Fatalf("unexpected crypto provided: %d", provided)
+	err := b.HandshakeIncoming(func(provided mse.CryptoMethod) (selected mse.CryptoMethod) {
+		if provided == mse.RC4 {
+			selected = mse.RC4
 		}
-		return mse.RC4, nil
+		return
 	}, sKey)
 	if err != nil {
 		t.Fatal(err)

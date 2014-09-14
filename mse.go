@@ -211,7 +211,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod, sKey []byte) (sel
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
-func (s *Stream) HandshakeIncoming(cryptoSelect func(provided CryptoMethod) (selected CryptoMethod, err error), sKey []byte) error {
+func (s *Stream) HandshakeIncoming(cryptoSelect func(provided CryptoMethod) (selected CryptoMethod), sKey []byte) error {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	Xb, Yb, err := keyPair()
@@ -304,9 +304,9 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(provided CryptoMethod) (sel
 	if err != nil {
 		return err
 	}
-	selected, err := cryptoSelect(cryptoProvide)
-	if err != nil {
-		return err
+	selected := cryptoSelect(cryptoProvide)
+	if selected == 0 {
+		return errors.New("none of the provided methods are accepted")
 	}
 	var lenPadC uint16
 	err = binary.Read(s.r, binary.BigEndian, &lenPadC)
