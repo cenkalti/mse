@@ -149,7 +149,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(padC))) // len(PadC)
+	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(padC)))
 	if err != nil {
 		return
 	}
