@@ -61,6 +61,7 @@ func init() {
 	p.SetBytes(b)
 }
 
+// CryptoMethod is 32-bit bitfield each bit representing a single crypto method.
 type CryptoMethod uint32
 
 // Crypto methods
@@ -69,17 +70,21 @@ const (
 	RC4
 )
 
+// Stream wraps a io.ReadWriter that automatically does encrypt/decrypt on read/write.
 type Stream struct {
 	raw io.ReadWriter
 	r   *cipher.StreamReader
 	w   *cipher.StreamWriter
 }
 
+// NewStream returns a new Stream. You must call HandshakeIncoming or
+// HandshakeOutgoing methods before using Read/Write methods.
 func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 
 func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
+// HandshakeOutgoing initiates MSE handshake for outgoing connection.
 func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, initialPayloadOutgoing []byte) (selected CryptoMethod, err error) {
 	if cryptoProvide == 0 {
 		err = errors.New("no crypto methods are provided")
@@ -237,6 +242,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
+// HandshakeIncoming initiates MSE handshake for incoming connection.
 func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided CryptoMethod) (selected CryptoMethod), initialPayloadIncoming, initialPayloadOutgoing []byte) (n int, err error) {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
