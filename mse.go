@@ -45,21 +45,14 @@ func debugf(format string, args ...interface{}) {
 	}
 }
 
-const pStr = "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A63A36210000000000090563"
-
 var (
-	p  = new(big.Int)
-	g  = big.NewInt(2)
-	vc = make([]byte, 8)
+	pBytes = []byte{255, 255, 255, 255, 255, 255, 255, 255, 201, 15, 218, 162, 33, 104, 194, 52, 196, 198, 98, 139, 128, 220, 28, 209, 41, 2, 78, 8, 138, 103, 204, 116, 2, 11, 190, 166, 59, 19, 155, 34, 81, 74, 8, 121, 142, 52, 4, 221, 239, 149, 25, 179, 205, 58, 67, 27, 48, 43, 10, 109, 242, 95, 20, 55, 79, 225, 53, 109, 109, 81, 194, 69, 228, 133, 181, 118, 98, 94, 126, 198, 244, 76, 66, 233, 166, 58, 54, 33, 0, 0, 0, 0, 0, 9, 5, 99}
+	p      = new(big.Int)
+	g      = big.NewInt(2)
+	vc     = make([]byte, 8)
 )
 
-func init() {
-	b, err := hex.DecodeString(pStr)
-	if err != nil {
-		panic(err)
-	}
-	p.SetBytes(b)
-}
+func init() { p.SetBytes(pBytes) }
 
 // CryptoMethod is 32-bit bitfield each bit representing a single crypto method.
 type CryptoMethod uint32
