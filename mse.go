@@ -16,7 +16,6 @@
 package mse
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/cipher"
 	crand "crypto/rand"
@@ -51,16 +50,6 @@ const (
 	RC4
 )
 
-const (
-	part1_size           = 20 + 28
-	part2_size           = 20
-	handshake_size       = part1_size + part2_size
-	enc_negotiation_size = 8 + 4 + 2
-	enc_pad_size         = 512
-	enc_pad_read_size    = 96 + enc_pad_size + 20
-	buffer_size          = enc_pad_read_size + 20 + enc_negotiation_size + enc_pad_size + 2 + handshake_size + 5
-)
-
 type Stream struct {
 	raw io.ReadWriter
 	// TODO remove x and y from struct
@@ -83,7 +72,8 @@ func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
 func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoMethod, err error) {
-	writeBuf := bufio.NewWriter(s.raw)
+	readBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
+	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
 	err = binary.Write(writeBuf, binary.BigEndian, &s.y)
@@ -98,19 +88,14 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	err = writeBuf.Flush()
+	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
 		return
 	}
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
-	readBuf := make([]byte, pSize+512)
-	_, err = io.ReadAtLeast(s.raw, readBuf, pSize)
-	if err != nil {
-		return
-	}
 	var yRemote uint64
-	err = binary.Read(bytes.NewReader(readBuf), binary.BigEndian, &yRemote)
+	err = binary.Read(s.raw, binary.BigEndian, &yRemote)
 	if err != nil {
 		return
 	}
@@ -131,46 +116,68 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
-	_, err = writeBuf.Write(hash("req1", S))
-	if err != nil {
-		return
-	}
+	req1 := hash("req1", S)
 	req2 := hash("req2", sKey)
 	req3 := hash("req3", S)
 	for i := 0; i < sha1.Size; i++ {
-		req2[i] ^= req3[i]
+		req3[i] ^= req2[i]
 	}
-	_, err = writeBuf.Write(req2)
+	padC, err := pad()
 	if err != nil {
 		return
 	}
-	encBuf := bytes.NewBuffer(make([]byte, 0, 8+4+2+0+2))
-	_, err = encBuf.Write(vc)
+	_, err = writeBuf.Write(req1)
 	if err != nil {
 		return
 	}
-	err = binary.Write(encBuf, binary.BigEndian, cryptoProvide)
+	_, err = writeBuf.Write(req3)
 	if err != nil {
 		return
 	}
-	err = binary.Write(encBuf, binary.BigEndian, uint16(0)) // len(PadC)
+	_, err = writeBuf.Write(vc)
 	if err != nil {
 		return
 	}
-	err = binary.Write(encBuf, binary.BigEndian, uint16(0)) // len(IA)
+	err = binary.Write(writeBuf, binary.BigEndian, cryptoProvide)
 	if err != nil {
 		return
 	}
-	encBytes := encBuf.Bytes()
+	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(padC))) // len(PadC)
+	if err != nil {
+		return
+	}
+	_, err = writeBuf.Write(padC)
+	if err != nil {
+		return
+	}
+	err = binary.Write(writeBuf, binary.BigEndian, uint16(0)) // len(IA) TODO take it as argument
+	if err != nil {
+		return
+	}
+	encBytes := writeBuf.Bytes()[40:]
 	cipherEnc.XORKeyStream(encBytes, encBytes)
-	writeBuf.Write(encBytes)
+	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
 		return
 	}
-	err = writeBuf.Flush()
+
+	// Read PadB from Step 2.
+	var i int
+	for { // Read until VC is seen in encrypted stream.
+		if _, err = io.CopyN(readBuf, s.r, 7); err != nil {
+			return
+		}
+		if i = bytes.Index(readBuf.Bytes(), vc); i != -1 {
+			break
+		}
+	}
+	// Discard PadB
+	_, err = io.CopyN(ioutil.Discard, readBuf, int64(i))
 	if err != nil {
 		return
 	}
+	// readBuf contains some decrypted data.
+	s.r = io.MultiReader(readBuf, s.r)
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 	vcRead := make([]byte, 8)
@@ -202,7 +209,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	}
 	fmt.Printf("--- lenPadD: %#v\n", lenPadD)
 	if lenPadD > 0 {
-		_, err = io.CopyN(ioutil.Discard, s.raw, int64(lenPadD))
+		_, err = io.CopyN(ioutil.Discard, s.r, int64(lenPadD))
 		if err != nil {
 			return
 		}
@@ -237,14 +244,12 @@ func pad() ([]byte, error) {
 }
 
 func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod) (CryptoMethod, error)) error {
+	readBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
+	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
+
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
-	readBuf := make([]byte, pSize+512)
-	_, err := io.ReadAtLeast(s.raw, readBuf, pSize)
-	if err != nil {
-		return err
-	}
 	var yRemote uint64
-	err = binary.Read(bytes.NewReader(readBuf), binary.BigEndian, &yRemote)
+	err := binary.Read(s.raw, binary.BigEndian, &yRemote)
 	if err != nil {
 		return err
 	}
@@ -265,7 +270,6 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
-	writeBuf := bufio.NewWriter(s.raw)
 	err = binary.Write(writeBuf, binary.BigEndian, &s.y)
 	if err != nil {
 		return err
@@ -275,31 +279,42 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if err != nil {
 		return err
 	}
-	err = writeBuf.Flush()
+	_, err = writeBuf.WriteTo(s.raw)
+	if err != nil {
+		return err
+	}
+
+	// Read PadA from Step 1.
+	hash1Calc := hash("req1", S)
+	var i int
+	for { // Read until HASH('req1', S) is seen in encrypted stream.
+		if _, err = io.CopyN(readBuf, s.raw, 21); err != nil {
+			return err
+		}
+		if i = bytes.Index(readBuf.Bytes(), hash1Calc); i != -1 {
+			break
+		}
+	}
+	// Discard PadA
+	_, err = io.CopyN(ioutil.Discard, readBuf, int64(i))
+	if err != nil {
+		return err
+	}
+	_, err = io.CopyN(readBuf, s.raw, int64(40-readBuf.Len()))
 	if err != nil {
 		return err
 	}
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
-	hashRead := make([]byte, 20)
-	_, err = io.ReadFull(s.raw, hashRead)
-	if err != nil {
-		return err
-	}
-	hash1Calc := hash("req1", S)
-	if !bytes.Equal(hashRead, hash1Calc) {
+	if !bytes.Equal(readBuf.Bytes()[:20], hash1Calc) {
 		err = errors.New("invalid S hash")
-	}
-	_, err = io.ReadFull(s.raw, hashRead)
-	if err != nil {
-		return err
 	}
 	hash2Calc := hash("req2", sKey)
 	hash3Calc := hash("req3", S)
 	for i := 0; i < sha1.Size; i++ {
 		hash3Calc[i] ^= hash2Calc[i]
 	}
-	if !bytes.Equal(hashRead, hash3Calc) {
+	if !bytes.Equal(readBuf.Bytes()[20:], hash3Calc) {
 		err = errors.New("invalid SKEY hash")
 	}
 	vcRead := make([]byte, 8)
@@ -319,32 +334,40 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if err != nil {
 		return err
 	}
-	_, err = io.CopyN(ioutil.Discard, s.raw, 4) // TODO padC and IA
+	var lenPadC uint16
+	err = binary.Read(s.r, binary.BigEndian, &lenPadC)
 	if err != nil {
 		return err
+	}
+	if lenPadC > 0 {
+		_, err = io.CopyN(ioutil.Discard, s.r, int64(lenPadC))
+		if err != nil {
+			return err
+		}
 	}
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
-	encBuf := bytes.NewBuffer(make([]byte, 0, 8+4+2))
-	_, err = encBuf.Write(vc)
+	_, err = writeBuf.Write(vc)
 	if err != nil {
 		return err
 	}
-	err = binary.Write(encBuf, binary.BigEndian, selected)
+	err = binary.Write(writeBuf, binary.BigEndian, selected)
 	if err != nil {
 		return err
 	}
-	err = binary.Write(encBuf, binary.BigEndian, uint16(0)) // len(PadD)
+	padD, err := pad()
 	if err != nil {
 		return err
 	}
-	encBytes := encBuf.Bytes()
-	cipherEnc.XORKeyStream(encBytes, encBytes)
-	writeBuf.Write(encBytes)
+	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(padD)))
 	if err != nil {
 		return err
 	}
-	err = writeBuf.Flush()
+	_, err = writeBuf.Write(padD)
+	if err != nil {
+		return err
+	}
+	_, err = writeBuf.WriteTo(s.w)
 	if err != nil {
 		return err
 	}
