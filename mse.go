@@ -205,7 +205,6 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (sel
 	}
 
 	return selected, nil
-
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
@@ -350,8 +349,8 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	}
 	fmt.Println("--- in: done")
 
-	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 	return nil
+	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
 func privateKey() (*big.Int, error) {
