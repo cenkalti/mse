@@ -117,7 +117,6 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	fmt.Printf("--- b: %q\n", string(b[:n]))
 	Yb := new(big.Int)
 	Yb.SetBytes(b[:96])
-	b = nil
 	S := Yb.Exp(Yb, Xa, p)
 	cipherEnc, err := rc4.NewCipher(rc4Key("keyA", S, sKey))
 	if err != nil {
@@ -188,7 +187,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 	vcEnc := make([]byte, 8)
 	s.r.S.XORKeyStream(vcEnc, vc)
-	err = s.readSync(vcEnc)
+	err = s.readSync(vcEnc, 616-len(b))
 	if err != nil {
 		return
 	}
@@ -245,7 +244,6 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	fmt.Println("--- in: done")
 	Ya := new(big.Int)
 	Ya.SetBytes(b[:96])
-	b = nil
 	S := Ya.Exp(Ya, Xb, p)
 	cipherEnc, err := rc4.NewCipher(rc4Key("keyB", S, sKey))
 	if err != nil {
@@ -288,7 +286,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	for i := 0; i < sha1.Size; i++ {
 		hash3Calc[i] ^= hash2Calc[i]
 	}
-	err = s.readSync(hash1Calc)
+	err = s.readSync(hash1Calc, 628-len(b))
 	if err != nil {
 		return
 	}
@@ -407,18 +405,23 @@ func (s *Stream) updateCipher(selected CryptoMethod) {
 	}
 }
 
-func (s *Stream) readSync(key []byte) error {
+func (s *Stream) readSync(key []byte, max int) error {
 	var readBuf bytes.Buffer
 	if _, err := io.CopyN(&readBuf, s.raw, int64(len(key))); err != nil {
 		return err
 	}
+	max -= len(key)
 	for {
 		if bytes.Equal(readBuf.Bytes(), key) {
 			return nil
 		}
+		if max <= 0 {
+			return errors.New("sync point is not found")
+		}
 		if _, err := io.CopyN(&readBuf, s.raw, 1); err != nil {
 			return err
 		}
+		max--
 		io.CopyN(ioutil.Discard, &readBuf, 1)
 	}
 }
