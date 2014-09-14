@@ -68,6 +68,11 @@ func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
 func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (selected CryptoMethod, err error) {
+	if cryptoProvide == 0 {
+		err = errors.New("no crypto methods are provided")
+		return
+	}
+
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	Xa, Ya, err := keyPair()
@@ -186,6 +191,10 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (sel
 		return
 	}
 	fmt.Printf("--- selected: %#v\n", selected)
+	if selected == 0 {
+		err = errors.New("none of the provided methods are accepted")
+		return
+	}
 	if !isPowerOfTwo(uint32(selected)) {
 		err = fmt.Errorf("invalid crypto selected: %d", selected)
 		return
@@ -203,6 +212,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (sel
 	if err != nil {
 		return
 	}
+	s.updateCipher(selected)
 
 	return selected, nil
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
@@ -301,9 +311,18 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	if err != nil {
 		return err
 	}
+	if cryptoProvide == 0 {
+		return errors.New("no crypto methods are provided")
+	}
 	selected := cryptoSelect(cryptoProvide)
 	if selected == 0 {
 		return errors.New("none of the provided methods are accepted")
+	}
+	if !isPowerOfTwo(uint32(selected)) {
+		return fmt.Errorf("invalid crypto selected: %d", selected)
+	}
+	if (selected & cryptoProvide) == 0 {
+		return fmt.Errorf("selected crypto is not provided: %d", selected)
 	}
 	var lenPadC uint16
 	err = binary.Read(s.r, binary.BigEndian, &lenPadC)
@@ -348,9 +367,19 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 		return err
 	}
 	fmt.Println("--- in: done")
+	s.updateCipher(selected)
 
 	return nil
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
+}
+
+func (s *Stream) updateCipher(selected CryptoMethod) {
+	switch selected {
+	case RC4:
+	case PlainText:
+		s.r = s.raw
+		s.w = s.raw
+	}
 }
 
 func privateKey() (*big.Int, error) {
