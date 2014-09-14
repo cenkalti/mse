@@ -2,7 +2,7 @@ package mse_test
 
 import (
 	"bytes"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"testing"
@@ -82,7 +82,7 @@ func testRws(a, b io.ReadWriter) error {
 		return fmt.Errorf("n must be 4, not %d", n)
 	}
 	if bytes.Compare(buf[:n], data) != 0 {
-		return errors.New("invalid data received")
+		return fmt.Errorf("invalid data received: %s", hex.EncodeToString(buf[:n]))
 	}
 
 	return nil
