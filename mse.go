@@ -22,7 +22,9 @@ import (
 	"crypto/rc4"
 	"crypto/sha1"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -203,9 +205,9 @@ func (s *Stream) decrypt(n int) ([]byte, error) {
 	return buf, nil
 }
 
-func hash(s string, key uint64) []byte {
+func hash(prefix string, key uint64) []byte {
 	h := sha1.New()
-	h.Write([]byte(s))
+	h.Write([]byte(prefix))
 	binary.Write(h, binary.BigEndian, &key)
 	return h.Sum(nil)
 }
@@ -258,19 +260,36 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	}
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
-	_, err = io.CopyN(ioutil.Discard, s.rw, 20) // TODO check S hash
+	hashRead := make([]byte, 20)
+	_, err = io.ReadFull(s.rw, hashRead)
 	if err != nil {
 		return err
 	}
-	_, err = io.CopyN(ioutil.Discard, s.rw, 20) // TODO check SKEY hash
+	hash1Calc := hash("req1", S)
+	if !bytes.Equal(hashRead, hash1Calc) {
+		err = errors.New("invalid S hash")
+	}
+	_, err = io.ReadFull(s.rw, hashRead)
 	if err != nil {
 		return err
 	}
-	_, err = s.decrypt(8) // TODO vc read
+	hash2Calc := hash("req2", sKey)
+	hash3Calc := hash("req3", S)
+	for i := 0; i < sha1.Size; i++ {
+		hash3Calc[i] ^= hash2Calc[i]
+	}
+	if !bytes.Equal(hashRead, hash3Calc) {
+		err = errors.New("invalid SKEY hash")
+	}
+	discard := make([]byte, 1024)
+	s.cipher.XORKeyStream(discard, discard)
+	vcRead, err := s.decrypt(8)
 	if err != nil {
 		return err
 	}
-	// TODO check vc is correct
+	if !bytes.Equal(vcRead, vc) {
+		return fmt.Errorf("invalid VC: %s", hex.EncodeToString(vcRead))
+	}
 	cryptoProvideBytes, err := s.decrypt(4)
 	if err != nil {
 		return err
