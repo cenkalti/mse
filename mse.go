@@ -199,11 +199,9 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod) (sel
 	if err != nil {
 		return
 	}
-	if lenPadD > 0 {
-		_, err = io.CopyN(ioutil.Discard, s.r, int64(lenPadD))
-		if err != nil {
-			return
-		}
+	_, err = io.CopyN(ioutil.Discard, s.r, int64(lenPadD))
+	if err != nil {
+		return
 	}
 
 	return selected, nil
