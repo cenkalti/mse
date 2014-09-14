@@ -297,15 +297,20 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	for i := 0; i < sha1.Size; i++ {
 		hash3Calc[i] ^= hash2Calc[i]
 	}
+	var readBuf bytes.Buffer
+	if _, err = io.CopyN(&readBuf, s.raw, 20); err != nil {
+		return
+	}
+	for {
+		b := readBuf.Bytes()
+		if bytes.Equal(b[len(b)-20:], hash1Calc) {
+			break
+		}
+		if _, err = io.CopyN(&readBuf, s.raw, 1); err != nil {
+			break
+		}
+	}
 	hashRead := make([]byte, 20)
-	_, err = io.ReadFull(s.raw, hashRead)
-	if err != nil {
-		return
-	}
-	if !bytes.Equal(hashRead, hash1Calc) {
-		err = errors.New("invalid S hash")
-		return
-	}
 	_, err = io.ReadFull(s.raw, hashRead)
 	if err != nil {
 		return
