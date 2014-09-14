@@ -54,10 +54,10 @@ func TestStream(t *testing.T) {
 
 	go a.HandshakeOutgoing(mse.RC4)
 	err := b.HandshakeIncoming(func(provided mse.CryptoMethod) (mse.CryptoMethod, error) {
-		if provided == mse.RC4 {
-			return mse.RC4, nil
+		if provided != mse.RC4 {
+			t.Fatalf("unexpected crypto provided: %d", provided)
 		}
-		return 0, fmt.Errorf("unexpected crypto provided: %d", provided)
+		return mse.RC4, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func testRws(a, b io.ReadWriter) error {
 	if n != 4 {
 		return fmt.Errorf("n must be 4, not %d", n)
 	}
-	if bytes.Compare(buf[:n], data) != 0 {
+	if !bytes.Equal(buf[:n], data) {
 		return fmt.Errorf("invalid data received: %s", hex.EncodeToString(buf[:n]))
 	}
 

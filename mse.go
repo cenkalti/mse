@@ -188,7 +188,15 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	// TODO check selected crypto is provided
+	fmt.Printf("--- selected: %#v\n", selected)
+	if !isPowerOfTwo(uint32(selected)) {
+		err = fmt.Errorf("invalid crypto selected: %d", selected)
+		return
+	}
+	if (selected & cryptoProvide) == 0 {
+		err = fmt.Errorf("selected crypto is not provided: %d", selected)
+		return
+	}
 	lenPadDBytes, err := s.decrypt(2)
 	if err != nil {
 		return
@@ -198,14 +206,21 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	_, err = io.CopyN(ioutil.Discard, s.raw, int64(lenPadD))
-	if err != nil {
-		return
+	fmt.Printf("--- lenPadD: %#v\n", lenPadD)
+	if lenPadD > 0 {
+		_, err = io.CopyN(ioutil.Discard, s.raw, int64(lenPadD))
+		if err != nil {
+			return
+		}
 	}
 
 	return selected, nil
 
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
+}
+
+func isPowerOfTwo(x uint32) bool {
+	return (x != 0) && ((x & (x - 1)) == 0)
 }
 
 func (s *Stream) decrypt(n int) ([]byte, error) {
@@ -335,7 +350,7 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	if err != nil {
 		return err
 	}
-	err = binary.Write(encBuf, binary.BigEndian, uint16(0)) // len(PadC)
+	err = binary.Write(encBuf, binary.BigEndian, uint16(0)) // len(PadD)
 	if err != nil {
 		return err
 	}
