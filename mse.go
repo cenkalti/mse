@@ -77,7 +77,7 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	}
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
-	err = writePubKey(writeBuf, Ya)
+	_, err = writeBuf.Write(keyBytesWithPad(Ya))
 	if err != nil {
 		return
 	}
@@ -200,7 +200,6 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	if err != nil {
 		return
 	}
-	fmt.Printf("--- lenPadD: %#v\n", lenPadD)
 	if lenPadD > 0 {
 		_, err = io.CopyN(ioutil.Discard, s.r, int64(lenPadD))
 		if err != nil {
@@ -248,7 +247,7 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
-	err = writePubKey(writeBuf, Yb)
+	_, err = writeBuf.Write(keyBytesWithPad(Yb))
 	if err != nil {
 		return err
 	}
@@ -380,18 +379,6 @@ func keyPair() (private, public *big.Int, err error) {
 	}
 	public = publicKey(private)
 	return
-}
-
-func writePubKey(buf *bytes.Buffer, key *big.Int) error {
-	b := key.Bytes() // big-endian
-	pad := 96 - len(b)
-	fmt.Printf("--- pad: %d\n", pad)
-	_, err := buf.Write(make([]byte, pad))
-	if err != nil {
-		return err
-	}
-	_, err = buf.Write(b)
-	return err
 }
 
 func keyBytesWithPad(key *big.Int) []byte {
