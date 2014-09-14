@@ -120,12 +120,12 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
 	b := make([]byte, 96+512)
 	debugln("--- out: reading PubkeyB")
-	n, err := io.ReadAtLeast(s.raw, b, 96)
+	firstRead, err := io.ReadAtLeast(s.raw, b, 96)
 	if err != nil {
 		return
 	}
 	debugln("--- out: done")
-	debugf("--- n: %d\n", n)
+	debugf("--- out: firstRead: %d\n", firstRead)
 	Yb := new(big.Int)
 	Yb.SetBytes(b[:96])
 	S := Yb.Exp(Yb, Xa, p)
@@ -198,7 +198,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 	vcEnc := make([]byte, 8)
 	s.r.S.XORKeyStream(vcEnc, vc)
-	err = s.readSync(vcEnc, 616-len(b))
+	err = s.readSync(vcEnc, 616-firstRead)
 	if err != nil {
 		return
 	}
@@ -208,7 +208,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 		return
 	}
 	debugln("--- out: done")
-	debugf("--- selected: %#v\n", selected)
+	debugf("--- out: selected: %#v\n", selected)
 	if selected == 0 {
 		err = errors.New("none of the provided methods are accepted")
 		return
@@ -248,7 +248,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
 	b := make([]byte, 96+512)
 	debugln("--- in: read PubkeyA")
-	_, err = io.ReadAtLeast(s.raw, b, 96)
+	firstRead, err := io.ReadAtLeast(s.raw, b, 96)
 	if err != nil {
 		return
 	}
@@ -297,7 +297,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	for i := 0; i < sha1.Size; i++ {
 		hash3Calc[i] ^= hash2Calc[i]
 	}
-	err = s.readSync(hash1Calc, 628-len(b))
+	err = s.readSync(hash1Calc, 628-firstRead)
 	if err != nil {
 		return
 	}
@@ -385,7 +385,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 		return
 	}
 	enc2Start := writeBuf.Len()
-	debugf("--- enc2Start: %#v\n", enc2Start)
+	debugf("--- in: enc2Start: %#v\n", enc2Start)
 	_, err = writeBuf.Write(initialPayloadOutgoing)
 	if err != nil {
 		return
