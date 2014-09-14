@@ -68,52 +68,6 @@ func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
-func privateKey() (*big.Int, error) {
-	b := make([]byte, 20)
-	_, err := rand.Read(b)
-	if err != nil {
-		return nil, err
-	}
-	var n big.Int
-	return n.SetBytes(b), nil
-}
-
-func publicKey(private *big.Int) *big.Int {
-	var n big.Int
-	return n.Exp(g, private, p)
-}
-
-func keyPair() (private, public *big.Int, err error) {
-	private, err = privateKey()
-	if err != nil {
-		return
-	}
-	public = publicKey(private)
-	return
-}
-
-func writePubKey(buf *bytes.Buffer, key *big.Int) error {
-	b := key.Bytes() // big-endian
-	pad := 96 - len(b)
-	fmt.Printf("--- pad: %d\n", pad)
-	_, err := buf.Write(make([]byte, pad))
-	if err != nil {
-		return err
-	}
-	_, err = buf.Write(b)
-	return err
-}
-
-func keyBytesWithPad(key *big.Int) []byte {
-	b := key.Bytes()
-	pad := 96 - len(b)
-	if pad > 0 {
-		b = make([]byte, 96)
-		copy(b[pad:], key.Bytes())
-	}
-	return b
-}
-
 func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoMethod, err error) {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
@@ -259,43 +213,6 @@ func (s *Stream) HandshakeOutgoing(cryptoProvide CryptoMethod) (selected CryptoM
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
-func isPowerOfTwo(x uint32) bool { return (x != 0) && ((x & (x - 1)) == 0) }
-
-func hashKey(prefix string, key *big.Int) []byte {
-	h := sha1.New()
-	h.Write([]byte(prefix))
-	h.Write(keyBytesWithPad(key))
-	return h.Sum(nil)
-}
-
-func hashBytes(prefix string, key []byte) []byte {
-	h := sha1.New()
-	h.Write([]byte(prefix))
-	h.Write(key)
-	return h.Sum(nil)
-}
-
-func rc4Key(prefix string, S *big.Int, sKey []byte) []byte {
-	h := sha1.New()
-	h.Write([]byte(prefix))
-	h.Write(keyBytesWithPad(S))
-	h.Write(sKey)
-	return h.Sum(nil)
-}
-
-func pad() ([]byte, error) {
-	padLen, err := rand.Int(rand.Reader, big.NewInt(512))
-	if err != nil {
-		return nil, err
-	}
-	b := make([]byte, int(padLen.Int64()))
-	_, err = rand.Read(b)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
-}
-
 func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod) (CryptoMethod, error)) error {
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
@@ -439,4 +356,87 @@ func (s *Stream) HandshakeIncoming(cryptoSelect func(cryptoProvide CryptoMethod)
 
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 	return nil
+}
+
+func privateKey() (*big.Int, error) {
+	b := make([]byte, 20)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+	var n big.Int
+	return n.SetBytes(b), nil
+}
+
+func publicKey(private *big.Int) *big.Int {
+	var n big.Int
+	return n.Exp(g, private, p)
+}
+
+func keyPair() (private, public *big.Int, err error) {
+	private, err = privateKey()
+	if err != nil {
+		return
+	}
+	public = publicKey(private)
+	return
+}
+
+func writePubKey(buf *bytes.Buffer, key *big.Int) error {
+	b := key.Bytes() // big-endian
+	pad := 96 - len(b)
+	fmt.Printf("--- pad: %d\n", pad)
+	_, err := buf.Write(make([]byte, pad))
+	if err != nil {
+		return err
+	}
+	_, err = buf.Write(b)
+	return err
+}
+
+func keyBytesWithPad(key *big.Int) []byte {
+	b := key.Bytes()
+	pad := 96 - len(b)
+	if pad > 0 {
+		b = make([]byte, 96)
+		copy(b[pad:], key.Bytes())
+	}
+	return b
+}
+
+func isPowerOfTwo(x uint32) bool { return (x != 0) && ((x & (x - 1)) == 0) }
+
+func hashKey(prefix string, key *big.Int) []byte {
+	h := sha1.New()
+	h.Write([]byte(prefix))
+	h.Write(keyBytesWithPad(key))
+	return h.Sum(nil)
+}
+
+func hashBytes(prefix string, key []byte) []byte {
+	h := sha1.New()
+	h.Write([]byte(prefix))
+	h.Write(key)
+	return h.Sum(nil)
+}
+
+func rc4Key(prefix string, S *big.Int, sKey []byte) []byte {
+	h := sha1.New()
+	h.Write([]byte(prefix))
+	h.Write(keyBytesWithPad(S))
+	h.Write(sKey)
+	return h.Sum(nil)
+}
+
+func pad() ([]byte, error) {
+	padLen, err := rand.Int(rand.Reader, big.NewInt(512))
+	if err != nil {
+		return nil, err
+	}
+	b := make([]byte, int(padLen.Int64()))
+	_, err = rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
