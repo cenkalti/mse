@@ -188,18 +188,9 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 	vcEnc := make([]byte, 8)
 	s.r.S.XORKeyStream(vcEnc, vc)
-	var readBuf bytes.Buffer
-	if _, err = io.CopyN(&readBuf, s.raw, 8); err != nil {
+	err = s.readSync(vcEnc)
+	if err != nil {
 		return
-	}
-	for {
-		b := readBuf.Bytes()
-		if bytes.Equal(b[len(b)-8:], vcEnc) {
-			break
-		}
-		if _, err = io.CopyN(&readBuf, s.raw, 1); err != nil {
-			break
-		}
 	}
 	fmt.Println("--- out: reading crypto_select")
 	err = binary.Read(s.r, binary.BigEndian, &selected)
@@ -297,18 +288,9 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	for i := 0; i < sha1.Size; i++ {
 		hash3Calc[i] ^= hash2Calc[i]
 	}
-	var readBuf bytes.Buffer
-	if _, err = io.CopyN(&readBuf, s.raw, 20); err != nil {
+	err = s.readSync(hash1Calc)
+	if err != nil {
 		return
-	}
-	for {
-		b := readBuf.Bytes()
-		if bytes.Equal(b[len(b)-20:], hash1Calc) {
-			break
-		}
-		if _, err = io.CopyN(&readBuf, s.raw, 1); err != nil {
-			break
-		}
 	}
 	hashRead := make([]byte, 20)
 	_, err = io.ReadFull(s.raw, hashRead)
@@ -422,6 +404,22 @@ func (s *Stream) updateCipher(selected CryptoMethod) {
 	case PlainText:
 		s.r = &cipher.StreamReader{S: plainTextCipher{}, R: s.raw}
 		s.w = &cipher.StreamWriter{S: plainTextCipher{}, W: s.raw}
+	}
+}
+
+func (s *Stream) readSync(key []byte) error {
+	var readBuf bytes.Buffer
+	if _, err := io.CopyN(&readBuf, s.raw, int64(len(key))); err != nil {
+		return err
+	}
+	for {
+		if bytes.Equal(readBuf.Bytes(), key) {
+			return nil
+		}
+		if _, err := io.CopyN(&readBuf, s.raw, 1); err != nil {
+			return err
+		}
+		io.CopyN(ioutil.Discard, &readBuf, 1)
 	}
 }
 
