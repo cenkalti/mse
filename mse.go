@@ -106,7 +106,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
 	writeBuf.Write(keyBytesWithPad(Ya))
-	padA, err := pad()
+	padA, err := padRandom()
 	if err != nil {
 		return
 	}
@@ -137,7 +137,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
 	hashS, hashSKey := hashes(S, sKey)
-	padC, err := pad()
+	padC, err := padZero()
 	if err != nil {
 		return
 	}
@@ -189,6 +189,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	if err != nil {
 		return
 	}
+	debugf("--- out: lenPadD: %d\n", lenPadD)
 	_, err = io.CopyN(ioutil.Discard, s.r, int64(lenPadD))
 	if err != nil {
 		return
@@ -236,7 +237,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
 	writeBuf.Write(keyBytesWithPad(Yb))
-	padB, err := pad()
+	padB, err := padRandom()
 	if err != nil {
 		return
 	}
@@ -323,7 +324,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	debugln("--- in: begin step 4")
 	writeBuf.Write(vc)
 	binary.Write(writeBuf, binary.BigEndian, selected)
-	padD, err := pad()
+	padD, err := padZero()
 	if err != nil {
 		return
 	}
@@ -465,17 +466,21 @@ func rc4Key(prefix string, S *big.Int, sKey []byte) []byte {
 	return h.Sum(nil)
 }
 
-func pad() ([]byte, error) {
+func padRandom() ([]byte, error) {
+	b, err := padZero()
+	if err != nil {
+		return nil, err
+	}
+	_, err = rand.Read(b)
+	return b, err
+}
+
+func padZero() ([]byte, error) {
 	padLen, err := rand.Int(rand.Reader, big.NewInt(512))
 	if err != nil {
 		return nil, err
 	}
-	b := make([]byte, int(padLen.Int64()))
-	_, err = rand.Read(b)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
+	return make([]byte, int(padLen.Int64())), nil
 }
 
 type plainTextCipher struct{}
