@@ -367,6 +367,8 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
 
+var discard = make([]byte, 1024)
+
 func (s *Stream) initRC4(encKey, decKey string, S *big.Int, sKey []byte) error {
 	cipherEnc, err := rc4.NewCipher(rc4Key(encKey, S, sKey))
 	if err != nil {
@@ -376,7 +378,6 @@ func (s *Stream) initRC4(encKey, decKey string, S *big.Int, sKey []byte) error {
 	if err != nil {
 		return err
 	}
-	discard := make([]byte, 1024)
 	cipherEnc.XORKeyStream(discard, discard)
 	cipherDec.XORKeyStream(discard, discard)
 	s.w = &cipher.StreamWriter{S: cipherEnc, W: s.raw}
