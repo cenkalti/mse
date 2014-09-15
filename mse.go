@@ -190,7 +190,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 		return
 	}
 	if (selected & cryptoProvide) == 0 {
-		err = fmt.Errorf("selected crypto is not provided: %d", selected)
+		err = fmt.Errorf("selected crypto was not provided: %d", selected)
 		return
 	}
 	var lenPadD uint16
