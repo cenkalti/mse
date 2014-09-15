@@ -130,19 +130,10 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	Yb := new(big.Int)
 	Yb.SetBytes(b[:96])
 	S := Yb.Exp(Yb, Xa, p)
-	cipherEnc, err := rc4.NewCipher(rc4Key("keyA", S, sKey))
+	err = s.initRC4("keyA", "keyB", S, sKey)
 	if err != nil {
 		return
 	}
-	cipherDec, err := rc4.NewCipher(rc4Key("keyB", S, sKey))
-	if err != nil {
-		return
-	}
-	discard := make([]byte, 1024)
-	cipherEnc.XORKeyStream(discard, discard)
-	cipherDec.XORKeyStream(discard, discard)
-	s.w = &cipher.StreamWriter{S: cipherEnc, W: s.raw}
-	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
 	hashS, hashSKey := hashes(S, sKey)
@@ -159,7 +150,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	binary.Write(writeBuf, binary.BigEndian, uint16(len(initialPayloadOutgoing)))
 	writeBuf.Write(initialPayloadOutgoing)
 	encBytes := writeBuf.Bytes()[40:]
-	cipherEnc.XORKeyStream(encBytes, encBytes)
+	s.w.S.XORKeyStream(encBytes, encBytes) // RC4
 	debugln("--- out: writing Step 3")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
@@ -238,19 +229,10 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	Ya := new(big.Int)
 	Ya.SetBytes(b[:96])
 	S := Ya.Exp(Ya, Xb, p)
-	cipherEnc, err := rc4.NewCipher(rc4Key("keyB", S, sKey))
+	err = s.initRC4("keyB", "keyA", S, sKey)
 	if err != nil {
 		return
 	}
-	cipherDec, err := rc4.NewCipher(rc4Key("keyA", S, sKey))
-	if err != nil {
-		return
-	}
-	discard := make([]byte, 1024)
-	cipherEnc.XORKeyStream(discard, discard)
-	cipherDec.XORKeyStream(discard, discard)
-	s.w = &cipher.StreamWriter{S: cipherEnc, W: s.raw}
-	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
 	writeBuf.Write(keyBytesWithPad(Yb))
@@ -361,6 +343,23 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	debugln("--- in: end handshake")
 	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
+}
+
+func (s *Stream) initRC4(encKey, decKey string, S *big.Int, sKey []byte) error {
+	cipherEnc, err := rc4.NewCipher(rc4Key(encKey, S, sKey))
+	if err != nil {
+		return err
+	}
+	cipherDec, err := rc4.NewCipher(rc4Key(decKey, S, sKey))
+	if err != nil {
+		return err
+	}
+	discard := make([]byte, 1024)
+	cipherEnc.XORKeyStream(discard, discard)
+	cipherDec.XORKeyStream(discard, discard)
+	s.w = &cipher.StreamWriter{S: cipherEnc, W: s.raw}
+	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
+	return nil
 }
 
 func (s *Stream) updateCipher(selected CryptoMethod) {
