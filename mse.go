@@ -74,13 +74,15 @@ type Stream struct {
 
 // NewStream returns a new Stream. You must call HandshakeIncoming or
 // HandshakeOutgoing methods before using Read/Write methods.
+// If any error happens during the handshake underlying io.ReadWriter will be closed if it implements io.Closer.
+// If underlying io.ReadWriter implements net.Conn interface, read deadline will be reset after handshake
+// so you have to set it after handshake if you want a custom read deadline.
 func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 
 func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
 // HandshakeOutgoing initiates MSE handshake for outgoing connection.
-// If any error happens during the handshake underlying io.ReadWriter will be closed if it implements io.Closer.
 func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, initialPayloadOutgoing []byte) (selected CryptoMethod, err error) {
 	defer func() {
 		if err != nil {
@@ -211,7 +213,6 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 }
 
 // HandshakeIncoming initiates MSE handshake for incoming connection.
-// If any error happens during the handshake underlying io.ReadWriter will be closed if it implements io.Closer.
 func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided CryptoMethod) (selected CryptoMethod), initialPayloadIncoming, initialPayloadOutgoing []byte) (n int, err error) {
 	defer func() {
 		if err != nil {
