@@ -420,6 +420,7 @@ func keyPair() (private, public *big.Int, err error) {
 	return
 }
 
+// keyBytesWithPad adds padding in front of the bytes to fill 96 bytes.
 func keyBytesWithPad(key *big.Int) []byte {
 	b := key.Bytes()
 	pad := 96 - len(b)
