@@ -145,18 +145,13 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
-	req1 := hashKey("req1", S)
-	req2 := hashBytes("req2", sKey)
-	req3 := hashKey("req3", S)
-	for i := 0; i < sha1.Size; i++ {
-		req3[i] ^= req2[i]
-	}
+	hashS, hashSKey := hashes(S, sKey)
 	padC, err := pad()
 	if err != nil {
 		return
 	}
-	writeBuf.Write(req1)
-	writeBuf.Write(req3)
+	writeBuf.Write(hashS)
+	writeBuf.Write(hashSKey)
 	writeBuf.Write(vc)
 	binary.Write(writeBuf, binary.BigEndian, cryptoProvide)
 	binary.Write(writeBuf, binary.BigEndian, uint16(len(padC)))
@@ -272,13 +267,8 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	debugln("--- in: done")
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
-	hash1Calc := hashKey("req1", S)
-	hash2Calc := hashBytes("req2", sKey)
-	hash3Calc := hashKey("req3", S)
-	for i := 0; i < sha1.Size; i++ {
-		hash3Calc[i] ^= hash2Calc[i]
-	}
-	err = s.readSync(hash1Calc, 628-firstRead)
+	hashS, hashSKey := hashes(S, sKey)
+	err = s.readSync(hashS, 628-firstRead)
 	if err != nil {
 		return
 	}
@@ -287,7 +277,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	if err != nil {
 		return
 	}
-	if !bytes.Equal(hashRead, hash3Calc) {
+	if !bytes.Equal(hashRead, hashSKey) {
 		err = errors.New("invalid SKEY hash")
 		return
 	}
@@ -438,6 +428,16 @@ func keyBytesWithPad(key *big.Int) []byte {
 }
 
 func isPowerOfTwo(x uint32) bool { return (x != 0) && ((x & (x - 1)) == 0) }
+
+func hashes(S *big.Int, sKey []byte) (hashS, hashSKey []byte) {
+	req1 := hashKey("req1", S)
+	req2 := hashBytes("req2", sKey)
+	req3 := hashKey("req3", S)
+	for i := 0; i < sha1.Size; i++ {
+		req3[i] ^= req2[i]
+	}
+	return req1, req3
+}
 
 func hashKey(prefix string, key *big.Int) []byte {
 	h := sha1.New()
