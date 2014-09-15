@@ -310,6 +310,10 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	if err != nil {
 		return
 	}
+	if len(initialPayloadIncoming) < int(lenIA) {
+		err = io.ErrShortBuffer
+		return
+	}
 	n, err = io.ReadFull(s.r, initialPayloadIncoming[:int(lenIA)])
 	if err != nil {
 		return
