@@ -29,6 +29,8 @@ import (
 	"io/ioutil"
 	"math"
 	"math/big"
+	"net"
+	"time"
 )
 
 const enableDebug = false
@@ -119,14 +121,21 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	debugln("--- out: done")
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
+	conn, ok := s.raw.(net.Conn)
+	if ok {
+		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	}
 	b := make([]byte, 96+512)
 	debugln("--- out: reading PubkeyB")
 	firstRead, err := io.ReadAtLeast(s.raw, b, 96)
+	debugln("--- out: done")
+	debugf("--- out: firstRead: %d\n", firstRead)
 	if err != nil {
 		return
 	}
-	debugln("--- out: done")
-	debugf("--- out: firstRead: %d\n", firstRead)
+	if ok {
+		conn.SetReadDeadline(time.Time{})
+	}
 	Yb := new(big.Int)
 	Yb.SetBytes(b[:96])
 	S := Yb.Exp(Yb, Xa, p)
@@ -220,13 +229,21 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	}
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
+	conn, ok := s.raw.(net.Conn)
+	if ok {
+		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	}
 	b := make([]byte, 96+512)
 	debugln("--- in: read PubkeyA")
 	firstRead, err := io.ReadAtLeast(s.raw, b, 96)
+	debugln("--- in: done")
+	debugf("--- out: firstRead: %d\n", firstRead)
 	if err != nil {
 		return
 	}
-	debugln("--- in: done")
+	if ok {
+		conn.SetReadDeadline(time.Time{})
+	}
 	Ya := new(big.Int)
 	Ya.SetBytes(b[:96])
 	S := Ya.Exp(Ya, Xb, p)
