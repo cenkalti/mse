@@ -334,9 +334,9 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	writeBuf.Write(initialPayloadOutgoing)
 	enc1Bytes := writeBuf.Bytes()[:enc2Start]
 	enc2Bytes := writeBuf.Bytes()[enc2Start:]
-	s.w.S.XORKeyStream(enc1Bytes, enc1Bytes)
+	s.w.S.XORKeyStream(enc1Bytes, enc1Bytes) // RC4
 	s.updateCipher(selected)
-	s.w.S.XORKeyStream(enc2Bytes, enc2Bytes)
+	s.w.S.XORKeyStream(enc2Bytes, enc2Bytes) // selected cipher
 	debugln("--- in: writing step 4")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
