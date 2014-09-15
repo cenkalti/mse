@@ -96,18 +96,12 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	}
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
-	_, err = writeBuf.Write(keyBytesWithPad(Ya))
-	if err != nil {
-		return
-	}
+	writeBuf.Write(keyBytesWithPad(Ya))
 	padA, err := pad()
 	if err != nil {
 		return
 	}
-	_, err = writeBuf.Write(padA)
-	if err != nil {
-		return
-	}
+	writeBuf.Write(padA)
 	debugln("--- out: writing Step 1")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
@@ -152,38 +146,14 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	if err != nil {
 		return
 	}
-	_, err = writeBuf.Write(req1)
-	if err != nil {
-		return
-	}
-	_, err = writeBuf.Write(req3)
-	if err != nil {
-		return
-	}
-	_, err = writeBuf.Write(vc)
-	if err != nil {
-		return
-	}
-	err = binary.Write(writeBuf, binary.BigEndian, cryptoProvide)
-	if err != nil {
-		return
-	}
-	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(padC)))
-	if err != nil {
-		return
-	}
-	_, err = writeBuf.Write(padC)
-	if err != nil {
-		return
-	}
-	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(initialPayloadOutgoing)))
-	if err != nil {
-		return
-	}
-	_, err = writeBuf.Write(initialPayloadOutgoing)
-	if err != nil {
-		return
-	}
+	writeBuf.Write(req1)
+	writeBuf.Write(req3)
+	writeBuf.Write(vc)
+	binary.Write(writeBuf, binary.BigEndian, cryptoProvide)
+	binary.Write(writeBuf, binary.BigEndian, uint16(len(padC)))
+	writeBuf.Write(padC)
+	binary.Write(writeBuf, binary.BigEndian, uint16(len(initialPayloadOutgoing)))
+	writeBuf.Write(initialPayloadOutgoing)
 	encBytes := writeBuf.Bytes()[40:]
 	cipherEnc.XORKeyStream(encBytes, encBytes)
 	debugln("--- out: writing Step 3")
@@ -270,18 +240,12 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	s.r = &cipher.StreamReader{S: cipherDec, R: s.raw}
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
-	_, err = writeBuf.Write(keyBytesWithPad(Yb))
-	if err != nil {
-		return
-	}
+	writeBuf.Write(keyBytesWithPad(Yb))
 	padB, err := pad()
 	if err != nil {
 		return
 	}
-	_, err = writeBuf.Write(padB)
-	if err != nil {
-		return
-	}
+	writeBuf.Write(padB)
 	debugln("--- in: writing Step 2")
 	_, err = writeBuf.WriteTo(s.raw)
 	if err != nil {
@@ -363,32 +327,17 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
 	debugln("--- in: begin step 4")
-	_, err = writeBuf.Write(vc)
-	if err != nil {
-		return
-	}
-	err = binary.Write(writeBuf, binary.BigEndian, selected)
-	if err != nil {
-		return
-	}
+	writeBuf.Write(vc)
+	binary.Write(writeBuf, binary.BigEndian, selected)
 	padD, err := pad()
 	if err != nil {
 		return
 	}
-	err = binary.Write(writeBuf, binary.BigEndian, uint16(len(padD)))
-	if err != nil {
-		return
-	}
-	_, err = writeBuf.Write(padD)
-	if err != nil {
-		return
-	}
+	binary.Write(writeBuf, binary.BigEndian, uint16(len(padD)))
+	writeBuf.Write(padD)
 	enc2Start := writeBuf.Len()
 	debugf("--- in: enc2Start: %#v\n", enc2Start)
-	_, err = writeBuf.Write(initialPayloadOutgoing)
-	if err != nil {
-		return
-	}
+	writeBuf.Write(initialPayloadOutgoing)
 	enc1Bytes := writeBuf.Bytes()[:enc2Start]
 	enc2Bytes := writeBuf.Bytes()[enc2Start:]
 	s.w.S.XORKeyStream(enc1Bytes, enc1Bytes)
