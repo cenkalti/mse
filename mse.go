@@ -78,7 +78,16 @@ func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
 // HandshakeOutgoing initiates MSE handshake for outgoing connection.
+// If any error happens during the handshake underlying io.ReadWriter will be closed if it implements io.Closer.
 func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, initialPayloadOutgoing []byte) (selected CryptoMethod, err error) {
+	defer func() {
+		if err != nil {
+			if c, ok := s.raw.(io.Closer); ok {
+				c.Close()
+			}
+		}
+	}()
+
 	if cryptoProvide == 0 {
 		err = errors.New("no crypto methods are provided")
 		return
@@ -206,7 +215,16 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 }
 
 // HandshakeIncoming initiates MSE handshake for incoming connection.
+// If any error happens during the handshake underlying io.ReadWriter will be closed if it implements io.Closer.
 func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided CryptoMethod) (selected CryptoMethod), initialPayloadIncoming, initialPayloadOutgoing []byte) (n int, err error) {
+	defer func() {
+		if err != nil {
+			if c, ok := s.raw.(io.Closer); ok {
+				c.Close()
+			}
+		}
+	}()
+
 	writeBuf := bytes.NewBuffer(make([]byte, 0, 96+512))
 
 	Xb, Yb, err := keyPair()
