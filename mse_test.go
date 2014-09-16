@@ -3,6 +3,7 @@ package mse_test
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -56,6 +57,7 @@ func TestStream(t *testing.T) {
 	payloadB := []byte("payloadB")
 	payloadARead := make([]byte, 8)
 	payloadBRead := make([]byte, 8)
+	var n int
 
 	go func() {
 		_, err := a.HandshakeOutgoing(sKey, mse.RC4, payloadA)
@@ -67,17 +69,23 @@ func TestStream(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_, err := b.HandshakeIncoming(sKey, func(provided mse.CryptoMethod) (selected mse.CryptoMethod) {
-		if provided == mse.RC4 {
-			selected = mse.RC4
-		}
-		return
-	}, payloadARead, payloadB)
+	err := b.HandshakeIncoming(
+		sKey,
+		func(provided mse.CryptoMethod) (selected mse.CryptoMethod) {
+			if provided == mse.RC4 {
+				selected = mse.RC4
+			}
+			return
+		},
+		payloadARead, &n,
+		func() ([]byte, error) {
+			if !bytes.Equal(payloadARead[:n], payloadA) {
+				return nil, errors.New("invalid payload A")
+			}
+			return payloadB, nil
+		})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !bytes.Equal(payloadA, payloadARead) {
-		t.Fatal("invalid payload A")
 	}
 	if !bytes.Equal(payloadB, payloadBRead) {
 		t.Fatal("invalid payload B")

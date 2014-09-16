@@ -83,7 +83,12 @@ func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
 // HandshakeOutgoing initiates MSE handshake for outgoing connection.
-func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, initialPayloadOutgoing []byte) (selected CryptoMethod, err error) {
+// sKey is stream identifier key. Same key must be used at other side of the stream, otherwise handshake fails.
+// cryptoProvide is a bitfield for specifying supported encryption methods.
+// cryptoProvide may return zero value of CryptoMehtod that means none of the provided methods are selected then, handshake fails.
+// payload is optional initial payload that is going to be sent during handshake.
+// payload may be nil if you want to wait for the encryption negotation.
+func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payload []byte) (selected CryptoMethod, err error) {
 	defer func() {
 		if err != nil {
 			if c, ok := s.raw.(io.Closer); ok {
@@ -96,7 +101,7 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 		err = errors.New("no crypto methods are provided")
 		return
 	}
-	if len(initialPayloadOutgoing) > math.MaxUint16 {
+	if len(payload) > math.MaxUint16 {
 		err = errors.New("initial payload is too big")
 		return
 	}
@@ -158,8 +163,8 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 	binary.Write(writeBuf, binary.BigEndian, cryptoProvide)
 	binary.Write(writeBuf, binary.BigEndian, uint16(len(padC)))
 	writeBuf.Write(padC)
-	binary.Write(writeBuf, binary.BigEndian, uint16(len(initialPayloadOutgoing)))
-	writeBuf.Write(initialPayloadOutgoing)
+	binary.Write(writeBuf, binary.BigEndian, uint16(len(payload)))
+	writeBuf.Write(payload)
 	encBytes := writeBuf.Bytes()[40:]
 	s.w.S.XORKeyStream(encBytes, encBytes) // RC4
 	debugln("--- out: writing Step 3")
@@ -213,7 +218,18 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, init
 }
 
 // HandshakeIncoming initiates MSE handshake for incoming connection.
-func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided CryptoMethod) (selected CryptoMethod), initialPayloadIncoming, initialPayloadOutgoing []byte) (n int, err error) {
+// sKey is stream identifier key. Same key must be used at other side of the stream, otherwise handshake fails.
+// cryptoSelect is a function that takes provided methods as a bitfield and returns the selected crypto method.
+// payloadIn is a buffer for writing initial payload that is coming with the handshake from the initiator of the connection.
+// If payloadIn does not fit into payloadIn, handshake returns io.ErrShortBuffer.
+// processPayloadIn is optional function that takes the length of initial payload read into payloadIn and returns outgoing initial payload or an error.
+func (s *Stream) HandshakeIncoming(
+	sKey []byte,
+	cryptoSelect func(provided CryptoMethod) (selected CryptoMethod),
+	payloadIn []byte,
+	lenPayloadIn *int,
+	processPayloadIn func() (payloadOut []byte, err error)) (err error) {
+
 	defer func() {
 		if err != nil {
 			if c, ok := s.raw.(io.Closer); ok {
@@ -329,11 +345,16 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	if err != nil {
 		return
 	}
-	if len(initialPayloadIncoming) < int(lenIA) {
+	if len(payloadIn) < int(lenIA) {
 		err = io.ErrShortBuffer
 		return
 	}
-	n, err = io.ReadFull(s.r, initialPayloadIncoming[:int(lenIA)])
+	n, err := io.ReadFull(s.r, payloadIn[:int(lenIA)])
+	if err != nil {
+		return
+	}
+	*lenPayloadIn = n
+	payloadOut, err := processPayloadIn()
 	if err != nil {
 		return
 	}
@@ -350,7 +371,7 @@ func (s *Stream) HandshakeIncoming(sKey []byte, cryptoSelect func(provided Crypt
 	writeBuf.Write(padD)
 	enc2Start := writeBuf.Len()
 	debugf("--- in: enc2Start: %#v\n", enc2Start)
-	writeBuf.Write(initialPayloadOutgoing)
+	writeBuf.Write(payloadOut)
 	enc1Bytes := writeBuf.Bytes()[:enc2Start]
 	enc2Bytes := writeBuf.Bytes()[enc2Start:]
 	s.w.S.XORKeyStream(enc1Bytes, enc1Bytes) // RC4
