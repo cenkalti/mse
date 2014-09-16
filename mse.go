@@ -79,16 +79,25 @@ type Stream struct {
 // so you have to set it after handshake if you want a custom read deadline.
 func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 
-func (s *Stream) Read(p []byte) (n int, err error)  { return s.r.Read(p) }
+// Read from underlying io.ReadWriter, decrypt bytes and put into p.
+func (s *Stream) Read(p []byte) (n int, err error) { return s.r.Read(p) }
+
+// Encrypt bytes in p and write into underlying io.ReadWriter.
 func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 
 // HandshakeOutgoing initiates MSE handshake for outgoing connection.
-// sKey is stream identifier key. Same key must be used at other side of the stream, otherwise handshake fails.
+//
+// sKey is stream identifier key. Same key must be used at the other side of the stream, otherwise handshake fails.
+//
 // cryptoProvide is a bitfield for specifying supported encryption methods.
-// cryptoProvide may return zero value of CryptoMehtod that means none of the provided methods are selected then, handshake fails.
-// payload is optional initial payload that is going to be sent during handshake.
-// payload may be nil if you want to wait for the encryption negotation.
-func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payload []byte) (selected CryptoMethod, err error) {
+//
+// payload is initial payload that is going to be sent along with handshake.
+// It may be nil if you want to wait for the encryption negotation.
+func (s *Stream) HandshakeOutgoing(
+	sKey []byte,
+	cryptoProvide CryptoMethod,
+	payload []byte) (selected CryptoMethod, err error) {
+
 	defer func() {
 		if err != nil {
 			if c, ok := s.raw.(io.Closer); ok {
@@ -218,11 +227,16 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payl
 }
 
 // HandshakeIncoming initiates MSE handshake for incoming connection.
-// sKey is stream identifier key. Same key must be used at other side of the stream, otherwise handshake fails.
+//
+// sKey is stream identifier key. Same key must be used at the other side of the stream, otherwise handshake fails.
+//
 // cryptoSelect is a function that takes provided methods as a bitfield and returns the selected crypto method.
-// payloadIn is a buffer for writing initial payload that is coming with the handshake from the initiator of the connection.
-// If payloadIn does not fit into payloadIn, handshake returns io.ErrShortBuffer.
-// processPayloadIn is optional function that takes the length of initial payload read into payloadIn and returns outgoing initial payload or an error.
+// Function may return zero value that means none of the provided methods are selected and handshake fails.
+//
+// payloadIn is a buffer for writing initial payload that is coming along with the handshake from the initiator of the connection.
+// If initial payload does not fit into payloadIn, handshake returns io.ErrShortBuffer.
+//
+// processPayloadIn is an optional function that takes the length of initial payload read into payloadIn and returns outgoing initial payload or an error.
 func (s *Stream) HandshakeIncoming(
 	sKey []byte,
 	cryptoSelect func(provided CryptoMethod) (selected CryptoMethod),
