@@ -57,7 +57,7 @@ func TestStream(t *testing.T) {
 	payloadB := []byte("payloadB")
 	payloadARead := make([]byte, 8)
 	payloadBRead := make([]byte, 8)
-	var n int
+	var n uint16
 
 	go func() {
 		_, err := a.HandshakeOutgoing(sKey, mse.RC4, payloadA)

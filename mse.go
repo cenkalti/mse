@@ -241,7 +241,7 @@ func (s *Stream) HandshakeIncoming(
 	sKey []byte,
 	cryptoSelect func(provided CryptoMethod) (selected CryptoMethod),
 	payloadIn []byte,
-	lenPayloadIn *int,
+	lenPayloadIn *uint16,
 	processPayloadIn func() (payloadOut []byte, err error)) (err error) {
 
 	defer func() {
@@ -367,7 +367,7 @@ func (s *Stream) HandshakeIncoming(
 	if err != nil {
 		return
 	}
-	*lenPayloadIn = n
+	*lenPayloadIn = uint16(n)
 	payloadOut, err := processPayloadIn()
 	if err != nil {
 		return
