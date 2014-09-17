@@ -93,10 +93,7 @@ func (s *Stream) Write(p []byte) (n int, err error) { return s.w.Write(p) }
 //
 // payload is initial payload that is going to be sent along with handshake.
 // It may be nil if you want to wait for the encryption negotation.
-func (s *Stream) HandshakeOutgoing(
-	sKey []byte,
-	cryptoProvide CryptoMethod,
-	payload []byte) (selected CryptoMethod, err error) {
+func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payload []byte) (selected CryptoMethod, err error) {
 
 	defer func() {
 		if err != nil {
@@ -243,7 +240,7 @@ func (s *Stream) HandshakeOutgoing(
 // processPayloadIn is an optional function that processes incoming initial payload and generate outgoing initial payload.
 // If this function returns an error, handshake fails.
 func (s *Stream) HandshakeIncoming(
-	getSKey func(sKeyHash []byte) (sKey []byte),
+	getSKey func(sKeyHash [sha1.Size]byte) (sKey []byte),
 	cryptoSelect func(provided CryptoMethod) (selected CryptoMethod),
 	payloadIn []byte,
 	lenPayloadIn *uint16,
@@ -304,8 +301,8 @@ func (s *Stream) HandshakeIncoming(
 	if err != nil {
 		return
 	}
-	hashRead := make([]byte, 20)
-	_, err = io.ReadFull(s.raw, hashRead)
+	var hashRead [sha1.Size]byte
+	_, err = io.ReadFull(s.raw, hashRead[:])
 	if err != nil {
 		return
 	}
