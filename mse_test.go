@@ -70,7 +70,12 @@ func TestStream(t *testing.T) {
 		}
 	}()
 	err := b.HandshakeIncoming(
-		sKey,
+		func(sKeyHash []byte) []byte {
+			if bytes.Equal(sKeyHash, mse.HashSKey(sKey)) {
+				return sKey
+			}
+			return nil
+		},
 		func(provided mse.CryptoMethod) (selected mse.CryptoMethod) {
 			if provided == mse.RC4 {
 				selected = mse.RC4

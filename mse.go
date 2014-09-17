@@ -123,7 +123,7 @@ func (s *Stream) HandshakeOutgoing(
 	}
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
-	writeBuf.Write(keyBytesWithPad(Ya))
+	writeBuf.Write(bytesWithPad(Ya))
 	padA, err := padRandom()
 	if err != nil {
 		return
@@ -228,7 +228,9 @@ func (s *Stream) HandshakeOutgoing(
 
 // HandshakeIncoming initiates MSE handshake for incoming connection.
 //
-// sKey is stream identifier key. Same key must be used at the other side of the stream, otherwise handshake fails.
+// getSKey must return the correct stream identifier for given sKeyHash.
+// sKeyHash can be calculated with mse.HashSKey function.
+// If there is no matching sKeyHash in your application, you must return nil.
 //
 // cryptoSelect is a function that takes provided methods as a bitfield and returns the selected crypto method.
 // Function may return zero value that means none of the provided methods are selected and handshake fails.
@@ -236,9 +238,12 @@ func (s *Stream) HandshakeOutgoing(
 // payloadIn is a buffer for writing initial payload that is coming along with the handshake from the initiator of the connection.
 // If initial payload does not fit into payloadIn, handshake returns io.ErrShortBuffer.
 //
-// processPayloadIn is an optional function that takes the length of initial payload read into payloadIn and returns outgoing initial payload or an error.
+// lenPayloadIn is lenght of the data read into payloadIn.
+//
+// processPayloadIn is an optional function that processes incoming initial payload and generate outgoing initial payload.
+// If this function returns an error, handshake fails.
 func (s *Stream) HandshakeIncoming(
-	sKey []byte,
+	getSKey func(sKeyHash []byte) (sKey []byte),
 	cryptoSelect func(provided CryptoMethod) (selected CryptoMethod),
 	payloadIn []byte,
 	lenPayloadIn *uint16,
@@ -278,13 +283,9 @@ func (s *Stream) HandshakeIncoming(
 	Ya := new(big.Int)
 	Ya.SetBytes(b[:96])
 	S := Ya.Exp(Ya, Xb, p)
-	err = s.initRC4("keyB", "keyA", S, sKey)
-	if err != nil {
-		return
-	}
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
-	writeBuf.Write(keyBytesWithPad(Yb))
+	writeBuf.Write(bytesWithPad(Yb))
 	padB, err := padRandom()
 	if err != nil {
 		return
@@ -298,8 +299,8 @@ func (s *Stream) HandshakeIncoming(
 	debugln("--- in: done")
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
-	hashS, hashSKey := hashes(S, sKey)
-	err = s.readSync(hashS, 628-firstRead)
+	req1 := hashInt("req1", S)
+	err = s.readSync(req1, 628-firstRead)
 	if err != nil {
 		return
 	}
@@ -308,8 +309,17 @@ func (s *Stream) HandshakeIncoming(
 	if err != nil {
 		return
 	}
-	if !bytes.Equal(hashRead, hashSKey) {
+	req3 := hashInt("req3", S)
+	for i := 0; i < sha1.Size; i++ {
+		hashRead[i] ^= req3[i]
+	}
+	sKey := getSKey(hashRead)
+	if sKey == nil {
 		err = errors.New("invalid SKEY hash")
+		return
+	}
+	err = s.initRC4("keyB", "keyA", S, sKey)
+	if err != nil {
 		return
 	}
 	vcRead := make([]byte, 8)
@@ -475,8 +485,8 @@ func keyPair() (private, public *big.Int, err error) {
 	return
 }
 
-// keyBytesWithPad adds padding in front of the bytes to fill 96 bytes.
-func keyBytesWithPad(key *big.Int) []byte {
+// bytesWithPad adds padding in front of the bytes to fill 96 bytes.
+func bytesWithPad(key *big.Int) []byte {
 	b := key.Bytes()
 	pad := 96 - len(b)
 	if pad > 0 {
@@ -489,25 +499,25 @@ func keyBytesWithPad(key *big.Int) []byte {
 func isPowerOfTwo(x uint32) bool { return (x != 0) && ((x & (x - 1)) == 0) }
 
 func hashes(S *big.Int, sKey []byte) (hashS, hashSKey []byte) {
-	req1 := hashKey("req1", S)
-	req2 := hashBytes("req2", sKey)
-	req3 := hashKey("req3", S)
+	req1 := hashInt("req1", S)
+	req2 := HashSKey(sKey)
+	req3 := hashInt("req3", S)
 	for i := 0; i < sha1.Size; i++ {
 		req3[i] ^= req2[i]
 	}
 	return req1, req3
 }
 
-func hashKey(prefix string, key *big.Int) []byte {
+func hashInt(prefix string, i *big.Int) []byte {
 	h := sha1.New()
 	h.Write([]byte(prefix))
-	h.Write(keyBytesWithPad(key))
+	h.Write(bytesWithPad(i))
 	return h.Sum(nil)
 }
 
-func hashBytes(prefix string, key []byte) []byte {
+func HashSKey(key []byte) []byte {
 	h := sha1.New()
-	h.Write([]byte(prefix))
+	h.Write([]byte("req2"))
 	h.Write(key)
 	return h.Sum(nil)
 }
@@ -515,7 +525,7 @@ func hashBytes(prefix string, key []byte) []byte {
 func rc4Key(prefix string, S *big.Int, sKey []byte) []byte {
 	h := sha1.New()
 	h.Write([]byte(prefix))
-	h.Write(keyBytesWithPad(S))
+	h.Write(bytesWithPad(S))
 	h.Write(sKey)
 	return h.Sum(nil)
 }
