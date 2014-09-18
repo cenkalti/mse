@@ -77,8 +77,7 @@ type Stream struct {
 // NewStream returns a new Stream. You must call HandshakeIncoming or
 // HandshakeOutgoing methods before using Read/Write methods.
 // If any error happens during the handshake underlying io.ReadWriter will be closed if it implements io.Closer.
-// If underlying io.ReadWriter implements net.Conn interface, read deadline will be reset after handshake
-// so you have to set it after handshake if you want a custom read deadline.
+// If underlying io.ReadWriter implements net.Conn interface, read and write deadlines will be reset after the handshake, so if you are setting deadlines do it after the handshake.
 func NewStream(rw io.ReadWriter) *Stream { return &Stream{raw: rw} }
 
 // Read from underlying io.ReadWriter, decrypt bytes and put into p.
