@@ -71,7 +71,7 @@ func TestStream(t *testing.T) {
 	}()
 	err := b.HandshakeIncoming(
 		func(sKeyHash [20]byte) []byte {
-			if bytes.Equal(sKeyHash[:], mse.HashSKey(sKey)) {
+			if sKeyHash == mse.HashSKey(sKey) {
 				return sKey
 			}
 			return nil

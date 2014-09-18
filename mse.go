@@ -546,11 +546,13 @@ func hashInt(prefix string, i *big.Int) []byte {
 	return h.Sum(nil)
 }
 
-func HashSKey(key []byte) []byte {
+func HashSKey(key []byte) [sha1.Size]byte {
+	var sum [sha1.Size]byte
 	h := sha1.New()
 	h.Write([]byte("req2"))
 	h.Write(key)
-	return h.Sum(nil)
+	copy(sum[:], h.Sum(nil))
+	return sum
 }
 
 func rc4Key(prefix string, S *big.Int, sKey []byte) []byte {
