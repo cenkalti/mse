@@ -33,6 +33,8 @@ import (
 	"time"
 )
 
+const connDeadline = 30 * time.Second
+
 const enableDebug = false
 
 func debugln(args ...interface{}) {
@@ -120,6 +122,11 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payl
 	}
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
+	if conn, ok := s.raw.(net.Conn); ok {
+		if err = conn.SetWriteDeadline(time.Now().Add(connDeadline)); err != nil {
+			return
+		}
+	}
 	writeBuf.Write(bytesWithPad(Ya))
 	padA, err := padRandom()
 	if err != nil {
@@ -134,9 +141,10 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payl
 	debugln("--- out: done")
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
-	conn, ok := s.raw.(net.Conn)
-	if ok {
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	if conn, ok := s.raw.(net.Conn); ok {
+		if err = conn.SetReadDeadline(time.Now().Add(connDeadline)); err != nil {
+			return
+		}
 	}
 	b := make([]byte, 96+512)
 	debugln("--- out: reading PubkeyB")
@@ -145,9 +153,6 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payl
 	debugf("--- out: firstRead: %d\n", firstRead)
 	if err != nil {
 		return
-	}
-	if ok {
-		conn.SetReadDeadline(time.Time{})
 	}
 	Yb := new(big.Int)
 	Yb.SetBytes(b[:96])
@@ -158,6 +163,11 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payl
 	}
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
+	if conn, ok := s.raw.(net.Conn); ok {
+		if err = conn.SetWriteDeadline(time.Now().Add(connDeadline)); err != nil {
+			return
+		}
+	}
 	hashS, hashSKey := hashes(S, sKey)
 	padC, err := padZero()
 	if err != nil {
@@ -181,6 +191,11 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payl
 	debugln("--- out: done")
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
+	if conn, ok := s.raw.(net.Conn); ok {
+		if err = conn.SetReadDeadline(time.Now().Add(connDeadline)); err != nil {
+			return
+		}
+	}
 	vcEnc := make([]byte, 8)
 	s.r.S.XORKeyStream(vcEnc, vc)
 	err = s.readSync(vcEnc, 616-firstRead)
@@ -219,6 +234,9 @@ func (s *Stream) HandshakeOutgoing(sKey []byte, cryptoProvide CryptoMethod, payl
 	s.updateCipher(selected)
 
 	debugln("--- out: end handshake")
+	if conn, ok := s.raw.(net.Conn); ok {
+		err = conn.SetDeadline(time.Time{})
+	}
 	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
@@ -262,9 +280,10 @@ func (s *Stream) HandshakeIncoming(
 	}
 
 	// Step 1 | A->B: Diffie Hellman Ya, PadA
-	conn, ok := s.raw.(net.Conn)
-	if ok {
-		conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	if conn, ok := s.raw.(net.Conn); ok {
+		if err = conn.SetReadDeadline(time.Now().Add(connDeadline)); err != nil {
+			return
+		}
 	}
 	b := make([]byte, 96+512)
 	debugln("--- in: read PubkeyA")
@@ -274,14 +293,16 @@ func (s *Stream) HandshakeIncoming(
 	if err != nil {
 		return
 	}
-	if ok {
-		conn.SetReadDeadline(time.Time{})
-	}
 	Ya := new(big.Int)
 	Ya.SetBytes(b[:96])
 	S := Ya.Exp(Ya, Xb, p)
 
 	// Step 2 | B->A: Diffie Hellman Yb, PadB
+	if conn, ok := s.raw.(net.Conn); ok {
+		if err = conn.SetWriteDeadline(time.Now().Add(connDeadline)); err != nil {
+			return
+		}
+	}
 	writeBuf.Write(bytesWithPad(Yb))
 	padB, err := padRandom()
 	if err != nil {
@@ -296,6 +317,11 @@ func (s *Stream) HandshakeIncoming(
 	debugln("--- in: done")
 
 	// Step 3 | A->B: HASH('req1', S), HASH('req2', SKEY) xor HASH('req3', S), ENCRYPT(VC, crypto_provide, len(PadC), PadC, len(IA)), ENCRYPT(IA)
+	if conn, ok := s.raw.(net.Conn); ok {
+		if err = conn.SetReadDeadline(time.Now().Add(connDeadline)); err != nil {
+			return
+		}
+	}
 	req1 := hashInt("req1", S)
 	err = s.readSync(req1, 628-firstRead)
 	if err != nil {
@@ -381,6 +407,11 @@ func (s *Stream) HandshakeIncoming(
 	}
 
 	// Step 4 | B->A: ENCRYPT(VC, crypto_select, len(padD), padD), ENCRYPT2(Payload Stream)
+	if conn, ok := s.raw.(net.Conn); ok {
+		if err = conn.SetWriteDeadline(time.Now().Add(connDeadline)); err != nil {
+			return
+		}
+	}
 	debugln("--- in: begin step 4")
 	writeBuf.Write(vc)
 	binary.Write(writeBuf, binary.BigEndian, selected)
@@ -406,6 +437,9 @@ func (s *Stream) HandshakeIncoming(
 	debugln("--- in: done")
 
 	debugln("--- in: end handshake")
+	if conn, ok := s.raw.(net.Conn); ok {
+		err = conn.SetDeadline(time.Time{})
+	}
 	return
 	// Step 5 | A->B: ENCRYPT2(Payload Stream)
 }
