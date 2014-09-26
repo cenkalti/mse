@@ -67,6 +67,17 @@ const (
 	RC4
 )
 
+func (c CryptoMethod) String() string {
+	switch c {
+	case PlainText:
+		return "PlainText"
+	case RC4:
+		return "RC4"
+	default:
+		return "unknown"
+	}
+}
+
 // Stream wraps a io.ReadWriter that automatically does encrypt/decrypt on read/write.
 type Stream struct {
 	raw io.ReadWriter
